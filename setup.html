@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Setup Subjects</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #6B7280, #9333EA);
+      font-family: 'Times New Roman', Times, serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #1F2937;
+    }
+    #setup-container {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      animation: bounceIn 0.5s ease;
+      width: 80%;
+      max-width: 600px;
+    }
+    h2 { color: #4B5EAA; margin-bottom: 20px; }
+    ul { list-style-type: none; padding: 0; }
+    li {
+      margin: 10px 0;
+      opacity: 0;
+      animation: fadeIn 0.3s ease forwards;
+    }
+    input {
+      background: white;
+      border: 2px solid #D1D5DB;
+      border-radius: 8px;
+      padding: 8px;
+      width: 300px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    input:focus {
+      border-color: #14B8A6;
+      box-shadow: 0 0 5px rgba(20, 184, 166, 0.5);
+      outline: none;
+    }
+    button {
+      background: #14B8A6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      margin: 5px;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.3s;
+    }
+    button:hover {
+      background: #5EEAD4;
+      transform: scale(1.05);
+    }
+    @media (max-width: 600px) {
+      #setup-container { width: 90%; }
+      input { width: 100%; }
+    }
+    @keyframes bounceIn { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div id="setup-container">
+    <h2>Setup Subjects for Your Class</h2>
+    <p>Enter one subject per line (press Enter to add another):</p>
+    <ul id="subjectList">
+      <li><input type="text" class="subject" placeholder="e.g., Math"></li>
+    </ul>
+    <button onclick="addSubject()">Add Another Subject</button><br><br>
+    <button onclick="saveSubjects()">Save Subjects</button>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentClass = urlParams.get("class") || localStorage.getItem("currentClass");
+
+    function addSubject() {
+      const list = document.getElementById("subjectList");
+      const li = document.createElement("li");
+      li.innerHTML = '<input type="text" class="subject" placeholder="e.g., Science">';
+      list.appendChild(li);
+      li.querySelector("input").focus();
+    }
+
+    function saveSubjects() {
+      const subjects = Array.from(document.querySelectorAll(".subject"))
+        .map(input => input.value.trim().toUpperCase())
+        .filter(s => s !== "");
+      if (subjects.length === 0) {
+        alert("Please enter at least one subject!");
+        return;
+      }
+      fetch("/save-subjects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ class: currentClass, subjects })
+      }).then(response => response.text()).then(text => {
+        alert(text);
+        localStorage.removeItem("currentClass");
+        window.location.href = "/index.html";
+      }).catch(error => {
+        console.error("Save subjects error:", error);
+        alert("Error saving subjects: " + error.message);
+      });
+    }
+
+    document.getElementById("subjectList").addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const inputs = document.querySelectorAll(".subject");
+        const lastInput = inputs[inputs.length - 1];
+        if (document.activeElement === lastInput) {
+          addSubject();
+        }
+      }
+    });
+
+    if (currentClass) localStorage.setItem("currentClass", currentClass);
+  </script>
+</body>
+</html>
