@@ -38,6 +38,7 @@
       box-sizing: border-box;
       transition: border-color 0.3s, box-shadow 0.3s;
     }
+    select[multiple] { height: 100px; }
     input:focus, select:focus {
       border-color: #14B8A6;
       box-shadow: 0 0 5px rgba(20, 184, 166, 0.5);
@@ -113,10 +114,10 @@
     <select id="classSelect" onchange="loadRecords()"></select>
     <table id="recordsTable"></table>
     <button onclick="deleteSelected()">Delete Selected</button>
-    <h3>Reset Subjects</h3>
-    <select id="resetClassSelect"></select>
-    <input type="text" id="newSubjects" placeholder="e.g., Math, Science, English">
-    <button onclick="resetSubjects()">Reset Subjects</button>
+    <h3>Delete Subjects</h3>
+    <select id="resetClassSelect" onchange="loadSubjects()"></select>
+    <select id="subjectsToDelete" multiple></select>
+    <button onclick="deleteSubjects()">Delete Subjects</button>
     <div id="log"></div>
   </div>
 
@@ -213,24 +214,39 @@
       }
     }
 
-    function resetSubjects() {
+    function loadSubjects() {
       const className = document.getElementById("resetClassSelect").value;
-      const newSubjects = document.getElementById("newSubjects").value.split(",").map(s => s.trim().toUpperCase()).filter(s => s);
-      if (!className || newSubjects.length === 0) {
-        alert("Please select a class and enter subjects!");
+      if (!className) {
+        document.getElementById("subjectsToDelete").innerHTML = "";
         return;
       }
-      fetch("/reset-subjects", {
+      fetch(`/get-subjects?class=${className}`)
+        .then(response => response.json())
+        .then(subjects => {
+          const select = document.getElementById("subjectsToDelete");
+          select.innerHTML = subjects.map(sub => `<option value="${sub}">${sub}</option>`).join("");
+        });
+    }
+
+    function deleteSubjects() {
+      const className = document.getElementById("resetClassSelect").value;
+      const subjectsToDelete = Array.from(document.getElementById("subjectsToDelete").selectedOptions).map(opt => opt.value);
+      if (!className || subjectsToDelete.length === 0) {
+        alert("Please select a class and at least one subject to delete!");
+        return;
+      }
+      fetch("/delete-subjects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ class: className, subjects: newSubjects })
+        body: JSON.stringify({ class: className, subjects: subjectsToDelete })
       })
         .then(response => response.text())
         .then(text => {
           alert(text);
+          loadSubjects();
           loadLog();
         })
-        .catch(error => alert("Reset error: " + error.message));
+        .catch(error => alert("Delete error: " + error.message));
     }
 
     function downloadAllScores() {

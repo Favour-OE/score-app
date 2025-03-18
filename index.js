@@ -10,7 +10,7 @@ const path = require("path");
 const app = express();
 const port = 3000;
 const mongoUri = "mongodb+srv://scoreappuser:0908@cluster0.sutmk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "mysecret2023"; // Set in Render dashboard
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "mysecret2023";
 
 app.use(express.json());
 app.use(express.static("."));
@@ -140,20 +140,23 @@ app.get("/get-classes", async (req, res) => {
 app.post("/delete-record", async (req, res) => {
   const { class: className, serialNumbers } = req.body;
   await db.collection("scores").deleteMany({ class: className, serialNumber: { $in: serialNumbers.map(Number) } });
-  await generateExcel(className);
+  await generateExcel(className); // Regenerate Excel after delete
   await db.collection("logs").insertOne({ timestamp: new Date().toISOString(), action: `Deleted records S/N ${serialNumbers.join(", ")} for ${className}` });
   res.send("Records deleted!");
 });
 
-app.post("/reset-subjects", async (req, res) => {
+app.post("/delete-subjects", async (req, res) => {
   const { class: className, subjects } = req.body;
+  const currentSubjects = (await db.collection("subjects").findOne({ class: className })).subjects;
+  const updatedSubjects = currentSubjects.filter(sub => !subjects.includes(sub));
   await db.collection("subjects").updateOne(
     { class: className },
-    { $set: { subjects } },
-    { upsert: true }
+    { $set: { subjects: updatedSubjects } }
   );
-  await db.collection("logs").insertOne({ timestamp: new Date().toISOString(), action: `Reset subjects for ${className} to ${subjects.join(", ")}` });
-  res.send("Subjects reset!");
+  await db.collection("scores").deleteMany({ class: className, subject: { $in: subjects } });
+  await generateExcel(className);
+  await db.collection("logs").insertOne({ timestamp: new Date().toISOString(), action: `Deleted subjects ${subjects.join(", ")} for ${className}` });
+  res.send("Subjects deleted!");
 });
 
 app.get("/download-all-scores", async (req, res) => {
@@ -164,7 +167,7 @@ app.get("/download-all-scores", async (req, res) => {
   archive.pipe(res);
 
   for (const className of classes) {
-    await generateExcel(className);
+    await generateExcel(className); // Ensure latest data
     archive.file(`${className}_scores.xlsx`, { name: `${className}_scores.xlsx` });
   }
 
@@ -182,7 +185,7 @@ async function generateExcel(className) {
 
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Scores");
-  const subjects = (await db.collection("subjects").findOne({ class: className })).subjects;
+  const subjects = (await db.collection("subjects").findOne({ class: className })).subjects || [];
   const headers = ["Serial Number", "Student Name"].concat(subjects.flatMap(sub => [`${sub} CA`, `${sub} Exam`]));
   worksheet.columns = headers.map(header => ({ header, key: header, width: 15 }));
 
