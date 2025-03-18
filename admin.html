@@ -56,6 +56,26 @@
       box-shadow: 0 0 5px rgba(20, 184, 166, 0.5);
       outline: none;
     }
+    .password-container {
+      position: relative;
+      width: 100%;
+      max-width: 300px;
+      display: block;
+      margin: 8px auto;
+    }
+    .password-container input {
+      padding-right: 40px;
+      width: 100%;
+    }
+    .eye-icon {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 18px;
+      color: #6B7280;
+    }
     button, select.download-button {
       border: none;
       padding: 12px 24px;
@@ -138,7 +158,10 @@
   <div id="admin-container">
     <h2>Admin Login</h2>
     <input type="text" id="adminUsername" placeholder="Admin Username"><br>
-    <input type="password" id="adminPassword" placeholder="Admin Password"><br>
+    <div class="password-container">
+      <input type="password" id="adminPassword" placeholder="Admin Password">
+      <span class="eye-icon" onclick="togglePassword()">👁️</span>
+    </div>
     <button class="action-button" onclick="adminLogin()">Login</button>
   </div>
   <div id="dashboard">
@@ -173,6 +196,18 @@
     let adminLoggedIn = localStorage.getItem("adminLoggedIn") === "true";
     if (adminLoggedIn) { showDashboard(); checkTimeout(); }
 
+    function togglePassword() {
+      const passwordInput = document.getElementById("adminPassword");
+      const eyeIcon = document.querySelector(".eye-icon");
+      if (passwordInput.type === "password") {
+        passwordInput.type = "text";
+        eyeIcon.textContent = "👁️‍🗨️"; // Eye with slash (optional)
+      } else {
+        passwordInput.type = "password";
+        eyeIcon.textContent = "👁️";
+      }
+    }
+
     function adminLogin() {
       const username = document.getElementById("adminUsername").value;
       const password = document.getElementById("adminPassword").value;
@@ -189,7 +224,7 @@
             localStorage.setItem("loginTime", Date.now());
             showDashboard();
           } else {
-            alert("Invalid admin credentials!");
+            alert("Wrong username or password!");
           }
         })
         .catch(error => alert("Login error: " + error.message));

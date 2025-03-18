@@ -35,7 +35,7 @@ const classSubjects = {
   "jss1": ["english", "mathematics", "social studies", "civic education", "agricultural science", "integrated science", "computer studies", "phe", "business studies", "introductory technology", "french"],
   "jss2": ["english", "mathematics", "social studies", "civic education", "agricultural science", "integrated science", "computer studies", "phe", "business studies", "introductory technology", "french"],
   "jss3": ["english", "mathematics", "social studies", "civic education", "agricultural science", "integrated science", "computer studies", "phe", "business studies", "introductory technology", "french"],
-  "sss1": ["english", "mathematics", "data processing", "literature", "government", "crs", "economics", "agricultural science", "french", "chemistry", "physics", "biology", "geography", "commerce", "accounting"],
+  "sss1": ["english", "mathematics", "data processing", "literature", "government", "crs", "economics", "agricultural science", "french", "chemistry", "physics", "biology", "geography", "commerce", "accounting", "civic education"],
   "sss2a": ["english", "mathematics", "data processing", "literature", "government", "crs", "economics", "agricultural science", "french", "civic education"],
   "sss3a": ["english", "mathematics", "data processing", "literature", "government", "crs", "economics", "agricultural science", "french", "civic education"],
   "sss2b": ["english", "mathematics", "data processing", "economics", "agricultural science", "chemistry", "physics", "biology", "geography", "civic education"],
