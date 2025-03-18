@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Dashboard</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #6B7280, #9333EA);
+      font-family: 'Times New Roman', Times, serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #1F2937;
+      font-size: 16px;
+    }
+    #admin-container, #dashboard {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      animation: bounceIn 0.5s ease;
+      width: 100%;
+      max-width: 100vw;
+      box-sizing: border-box;
+    }
+    #dashboard { display: none; margin-top: 60px; }
+    h2 { color: #4B5EAA; margin-bottom: 20px; }
+    input, select {
+      background: white;
+      border: 2px solid #D1D5DB;
+      border-radius: 8px;
+      padding: 10px;
+      margin: 8px 0;
+      width: 100%;
+      max-width: 400px;
+      box-sizing: border-box;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    input:focus, select:focus {
+      border-color: #14B8A6;
+      box-shadow: 0 0 5px rgba(20, 184, 166, 0.5);
+      outline: none;
+    }
+    button {
+      background: #14B8A6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      margin: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.3s;
+      width: 100%;
+      max-width: 200px;
+    }
+    button:hover {
+      background: #5EEAD4;
+      transform: scale(1.05);
+    }
+    .button-group {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      overflow-x: auto;
+      display: block;
+    }
+    th, td {
+      border: 1px solid #D1D5DB;
+      padding: 10px;
+      text-align: center;
+      min-width: 60px;
+    }
+    th { background: #4B5EAA; color: white; }
+    tr:nth-child(even) { background: #F0F4F8; }
+    tr:hover { background: #E2E8F0; }
+    #recordsTable button { background: #EF4444; padding: 5px 10px; width: auto; }
+    #recordsTable button:hover { background: #DC2626; }
+    #log { margin-top: 20px; font-size: 14px; text-align: left; }
+    @media (max-width: 600px) {
+      #admin-container, #dashboard { padding: 15px; }
+      input, select { max-width: 100%; }
+      .button-group { flex-direction: column; gap: 10px; }
+      button { max-width: 100%; }
+      table { font-size: 14px; }
+    }
+    @keyframes bounceIn { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
+  </style>
+</head>
+<body>
+  <div id="admin-container">
+    <h2>Admin Login</h2>
+    <input type="text" id="adminUsername" placeholder="Admin Username"><br>
+    <input type="password" id="adminPassword" placeholder="Admin Password"><br>
+    <button onclick="adminLogin()">Login</button>
+  </div>
+
+  <div id="dashboard">
+    <h2>Admin Dashboard</h2>
+    <div class="button-group">
+      <button onclick="downloadAllScores()">Download All Scores</button>
+      <button onclick="logout()">Logout</button>
+    </div>
+    <h3>Manage Records</h3>
+    <select id="classSelect" onchange="loadRecords()"></select>
+    <table id="recordsTable"></table>
+    <button onclick="deleteSelected()">Delete Selected</button>
+    <h3>Reset Subjects</h3>
+    <select id="resetClassSelect"></select>
+    <input type="text" id="newSubjects" placeholder="e.g., Math, Science, English">
+    <button onclick="resetSubjects()">Reset Subjects</button>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    let adminLoggedIn = false;
+
+    function adminLogin() {
+      const username = document.getElementById("adminUsername").value;
+      const password = document.getElementById("adminPassword").value;
+      fetch("/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      })
+        .then(response => response.text())
+        .then(text => {
+          if (text === "Admin login successful!") {
+            adminLoggedIn = true;
+            document.getElementById("admin-container").style.display = "none";
+            document.getElementById("dashboard").style.display = "block";
+            loadClasses();
+            alert(text);
+          } else {
+            alert("Invalid admin credentials!");
+          }
+        })
+        .catch(error => alert("Login error: " + error.message));
+    }
+
+    function loadClasses() {
+      fetch("/get-classes")
+        .then(response => response.json())
+        .then(classes => {
+          const classSelect = document.getElementById("classSelect");
+          const resetClassSelect = document.getElementById("resetClassSelect");
+          classSelect.innerHTML = '<option value="">Select Class</option>' + classes.map(cls => `<option value="${cls}">${cls}</option>`).join("");
+          resetClassSelect.innerHTML = '<option value="">Select Class</option>' + classes.map(cls => `<option value="${cls}">${cls}</option>`).join("");
+        });
+    }
+
+    function loadRecords() {
+      const className = document.getElementById("classSelect").value;
+      if (!className) return;
+      fetch(`/get-scores?class=${className}`)
+        .then(response => response.json())
+        .then(data => {
+          const table = document.getElementById("recordsTable");
+          fetch(`/get-subjects?class=${className}`)
+            .then(response => response.json())
+            .then(subjects => {
+              table.innerHTML = "<tr><th><input type='checkbox' onchange='toggleAll(this)'></th><th>S/N</th><th>Name</th>" + 
+                                subjects.map(sub => `<th colspan="2">${sub}</th>`).join("") + "<th>Edit</th></tr>" +
+                                "<tr><th></th><th></th><th></th>" + subjects.map(() => `<th>CA</th><th>Exam</th>`).join("") + "<th></th></tr>";
+              const studentData = {};
+              data.forEach(entry => {
+                if (!studentData[entry.serialNumber]) {
+                  studentData[entry.serialNumber] = { sn: entry.serialNumber, name: entry.studentName, scores: {} };
+                }
+                studentData[entry.serialNumber].scores[entry.subject] = { ca: entry.ca, exam: entry.exam };
+              });
+              Object.values(studentData).forEach(student => {
+                table.innerHTML += "<tr><td><input type='checkbox' class='recordCheckbox' value='" + student.sn + "'></td><td>" + student.sn + "</td><td>" + student.name + "</td>" +
+                                  subjects.map(sub => `<td>${student.scores[sub]?.ca || ""}</td><td>${student.scores[sub]?.exam || ""}</td>`).join("") +
+                                  `<td><button onclick="editRecord('${student.sn}')">Edit</button></td></tr>`;
+              });
+            });
+        });
+    }
+
+    function toggleAll(source) {
+      const checkboxes = document.querySelectorAll(".recordCheckbox");
+      checkboxes.forEach(cb => cb.checked = source.checked);
+    }
+
+    function deleteSelected() {
+      const selected = Array.from(document.querySelectorAll(".recordCheckbox:checked")).map(cb => cb.value);
+      if (selected.length === 0) {
+        alert("Please select at least one record to delete!");
+        return;
+      }
+      if (confirm(`Are you sure you want to delete ${selected.length} record(s)?`)) {
+        fetch("/delete-record", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ class: document.getElementById("classSelect").value, serialNumbers: selected })
+        })
+          .then(response => response.text())
+          .then(text => {
+            alert(text);
+            loadRecords();
+            loadLog();
+          })
+          .catch(error => alert("Delete error: " + error.message));
+      }
+    }
+
+    function resetSubjects() {
+      const className = document.getElementById("resetClassSelect").value;
+      const newSubjects = document.getElementById("newSubjects").value.split(",").map(s => s.trim().toUpperCase()).filter(s => s);
+      if (!className || newSubjects.length === 0) {
+        alert("Please select a class and enter subjects!");
+        return;
+      }
+      fetch("/reset-subjects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ class: className, subjects: newSubjects })
+      })
+        .then(response => response.text())
+        .then(text => {
+          alert(text);
+          loadLog();
+        })
+        .catch(error => alert("Reset error: " + error.message));
+    }
+
+    function downloadAllScores() {
+      fetch("/download-all-scores")
+        .then(response => {
+          if (!response.ok) throw new Error("Download failed!");
+          return response.blob();
+        })
+        .then(blob => {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "all_scores.zip";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+        })
+        .catch(error => alert(error.message));
+    }
+
+    function editRecord(serial) {
+      window.open(`/index.html?edit=${serial}&class=${document.getElementById("classSelect").value}`, "_blank");
+    }
+
+    function loadLog() {
+      fetch("/get-log")
+        .then(response => response.json())
+        .then(logs => {
+          document.getElementById("log").innerHTML = "<h3>Admin Actions</h3>" + logs.map(log => `<p>${log.timestamp}: ${log.action}</p>`).join("");
+        });
+    }
+
+    function logout() {
+      adminLoggedIn = false;
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("admin-container").style.display = "block";
+      document.getElementById("adminUsername").value = "";
+      document.getElementById("adminPassword").value = "";
+      alert("Logged out!");
+    }
+
+    if (adminLoggedIn) loadClasses();
+  </script>
+</body>
+</html>
