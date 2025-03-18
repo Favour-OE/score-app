@@ -5,28 +5,40 @@
   <style>
     body {
       background: linear-gradient(135deg, #6B7280, #9333EA);
-      font-family: 'Times New Roman', Times, serif;
+      font-family: Arial, sans-serif;
       margin: 0;
-      min-height: 100vh;
+      padding: 0;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
       color: #1F2937;
-      font-size: 16px;
+      font-size: 18px;
     }
+    #header {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      background: #14B8A6;
+      color: white;
+      padding: 10px;
+      text-align: center;
+      z-index: 2;
+      box-sizing: border-box;
+    }
+    #header span { font-size: 20px; font-weight: bold; }
     #admin-container, #dashboard {
-      background: white;
-      padding: 20px;
+      background: #FFFFFF;
+      padding: 30px;
       border-radius: 15px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
       text-align: center;
-      animation: bounceIn 0.5s ease;
       width: 100%;
-      max-width: 100vw;
+      max-width: 90%;
+      margin: 20px 0;
       box-sizing: border-box;
     }
-    #dashboard { display: none; margin-top: 60px; }
-    h2 { color: #4B5EAA; margin-bottom: 20px; }
+    #dashboard { display: none; }
+    h2, h3 { color: #4B5EAA; margin-bottom: 20px; font-weight: bold; }
     input, select {
       background: white;
       border: 2px solid #D1D5DB;
@@ -34,39 +46,34 @@
       padding: 10px;
       margin: 8px 0;
       width: 100%;
-      max-width: 400px;
+      max-width: 300px;
       box-sizing: border-box;
+      font-size: 18px;
       transition: border-color 0.3s, box-shadow 0.3s;
     }
-    select[multiple] { height: 100px; }
-    input:focus, select:focus {
+    select:focus, input:focus {
       border-color: #14B8A6;
       box-shadow: 0 0 5px rgba(20, 184, 166, 0.5);
       outline: none;
     }
-    button {
-      background: #14B8A6;
-      color: white;
+    button, select.download-button {
       border: none;
       padding: 12px 24px;
       border-radius: 8px;
       margin: 8px;
       cursor: pointer;
-      transition: transform 0.2s, background 0.3s;
+      font-size: 18px;
       width: 100%;
       max-width: 200px;
+      transition: background 0.3s;
     }
-    button:hover {
-      background: #5EEAD4;
-      transform: scale(1.05);
-    }
-    .button-group {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      flex-wrap: wrap;
-      margin: 10px 0;
-    }
+    .action-button, select.download-button { background: #14B8A6; color: white; }
+    .action-button:hover, select.download-button:hover { background: #2DD4BF; }
+    .delete-button { background: #EF4444; color: white; }
+    .delete-button:hover { background: #DC2626; }
+    .neutral-button { background: #9CA3AF; color: white; }
+    .neutral-button:hover { background: #6B7280; }
+    .button-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -78,51 +85,93 @@
       border: 1px solid #D1D5DB;
       padding: 10px;
       text-align: center;
-      min-width: 60px;
+      min-width: 80px;
     }
-    th { background: #4B5EAA; color: white; }
+    th {
+      background: #2C5282;
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    td:nth-child(2), td:nth-child(3) {
+      position: sticky;
+      left: 0;
+      background: #F0F4F8;
+      z-index: 1;
+    }
+    th:nth-child(2) { left: 0; z-index: 3; }
+    th:nth-child(3) { left: 80px; z-index: 3; }
+    td:nth-child(2) { left: 0; }
+    td:nth-child(3) { left: 80px; }
     tr:nth-child(even) { background: #F0F4F8; }
-    tr:hover { background: #E2E8F0; }
-    #recordsTable button { background: #EF4444; padding: 5px 10px; width: auto; }
-    #recordsTable button:hover { background: #DC2626; }
-    #log { margin-top: 20px; font-size: 14px; text-align: left; }
-    @media (max-width: 600px) {
-      #admin-container, #dashboard { padding: 15px; }
-      input, select { max-width: 100%; }
-      .button-group { flex-direction: column; gap: 10px; }
-      button { max-width: 100%; }
-      table { font-size: 14px; }
+    tr:hover { background: #DBEAFE; }
+    #log { margin-top: 20px; font-size: 16px; text-align: left; }
+    .spinner {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #D1D5DB;
+      border-top: 3px solid #14B8A6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 10px auto;
     }
-    @keyframes bounceIn { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
+    @media (max-width: 600px) {
+      #admin-container, #dashboard { padding: 20px; max-width: 100%; }
+      button, select { max-width: 100%; }
+      table { font-size: 14px; }
+      th, td { min-width: 60px; }
+      #header { padding: 8px; }
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
+  <div id="header" style="display: none;">
+    <button class="neutral-button" onclick="backToLogin()" style="float: left;">← Back</button>
+    <span id="classInfo">Logged in as: ADMIN</span>
+    <button class="neutral-button" onclick="logout()" style="float: right;">Logout</button>
+  </div>
   <div id="admin-container">
     <h2>Admin Login</h2>
     <input type="text" id="adminUsername" placeholder="Admin Username"><br>
     <input type="password" id="adminPassword" placeholder="Admin Password"><br>
-    <button onclick="adminLogin()">Login</button>
+    <button class="action-button" onclick="adminLogin()">Login</button>
   </div>
-
   <div id="dashboard">
     <h2>Admin Dashboard</h2>
     <div class="button-group">
-      <button onclick="downloadAllScores()">Download All Scores</button>
-      <button onclick="logout()">Logout</button>
+      <button class="action-button" onclick="downloadAllScores()">Download All Scores</button>
+      <select class="download-button" onchange="downloadClassScores(this.value)">
+        <option value="">Download Class Scores</option>
+      </select>
+      <button class="neutral-button" onclick="logout()">Logout</button>
     </div>
     <h3>Manage Records</h3>
     <select id="classSelect" onchange="loadRecords()"></select>
     <table id="recordsTable"></table>
-    <button onclick="deleteSelected()">Delete Selected</button>
-    <h3>Delete Subjects</h3>
-    <select id="resetClassSelect" onchange="loadSubjects()"></select>
-    <select id="subjectsToDelete" multiple></select>
-    <button onclick="deleteSubjects()">Delete Subjects</button>
+    <div id="spinner" class="spinner"></div>
+    <button class="delete-button" onclick="deleteSelected()">Delete Selected</button>
     <div id="log"></div>
   </div>
 
   <script>
-    let adminLoggedIn = false;
+    const TIMEOUT_MINUTES = 30;
+    function checkTimeout() {
+      const loginTime = localStorage.getItem("loginTime");
+      if (loginTime) {
+        const timeDiff = (Date.now() - parseInt(loginTime)) / 1000 / 60;
+        if (timeDiff > TIMEOUT_MINUTES) {
+          logout();
+        }
+      }
+    }
+
+    let adminLoggedIn = localStorage.getItem("adminLoggedIn") === "true";
+    if (adminLoggedIn) { showDashboard(); checkTimeout(); }
 
     function adminLogin() {
       const username = document.getElementById("adminUsername").value;
@@ -136,9 +185,9 @@
         .then(text => {
           if (text === "Admin login successful!") {
             adminLoggedIn = true;
-            document.getElementById("admin-container").style.display = "none";
-            document.getElementById("dashboard").style.display = "block";
-            loadClasses();
+            localStorage.setItem("adminLoggedIn", "true");
+            localStorage.setItem("loginTime", Date.now());
+            showDashboard();
           } else {
             alert("Invalid admin credentials!");
           }
@@ -146,14 +195,21 @@
         .catch(error => alert("Login error: " + error.message));
     }
 
+    function showDashboard() {
+      document.getElementById("admin-container").style.display = "none";
+      document.getElementById("dashboard").style.display = "block";
+      document.getElementById("header").style.display = "block";
+      loadClasses();
+    }
+
     function loadClasses() {
       fetch("/get-classes")
         .then(response => response.json())
         .then(classes => {
           const classSelect = document.getElementById("classSelect");
-          const resetClassSelect = document.getElementById("resetClassSelect");
+          const downloadSelect = document.querySelector(".download-button");
           classSelect.innerHTML = '<option value="">Select Class</option>' + classes.map(cls => `<option value="${cls}">${cls}</option>`).join("");
-          resetClassSelect.innerHTML = '<option value="">Select Class</option>' + classes.map(cls => `<option value="${cls}">${cls}</option>`).join("");
+          downloadSelect.innerHTML = '<option value="">Download Class Scores</option>' + classes.map(cls => `<option value="${cls}">${cls}</option>`).join("");
         });
     }
 
@@ -164,91 +220,62 @@
         .then(response => response.json())
         .then(data => {
           const table = document.getElementById("recordsTable");
-          fetch(`/get-subjects?class=${className}`)
-            .then(response => response.json())
-            .then(subjects => {
-              table.innerHTML = "<tr><th><input type='checkbox' onchange='toggleAll(this)'></th><th>S/N</th><th>Name</th>" + 
-                                subjects.map(sub => `<th colspan="2">${sub}</th>`).join("") + "<th>Edit</th></tr>" +
-                                "<tr><th></th><th></th><th></th>" + subjects.map(() => `<th>CA</th><th>Exam</th>`).join("") + "<th></th></tr>";
-              const studentData = {};
-              data.forEach(entry => {
-                if (!studentData[entry.serialNumber]) {
-                  studentData[entry.serialNumber] = { sn: entry.serialNumber, name: entry.studentName, scores: {} };
-                }
-                studentData[entry.serialNumber].scores[entry.subject] = { ca: entry.ca, exam: entry.exam };
-              });
-              Object.values(studentData).forEach(student => {
-                table.innerHTML += "<tr><td><input type='checkbox' class='recordCheckbox' value='" + student.sn + "'></td><td>" + student.sn + "</td><td>" + student.name + "</td>" +
-                                  subjects.map(sub => `<td>${student.scores[sub]?.ca || ""}</td><td>${student.scores[sub]?.exam || ""}</td>`).join("") +
-                                  `<td><button onclick="editRecord('${student.sn}')">Edit</button></td></tr>`;
-              });
+          const subjects = data.subjects.map(s => s.toUpperCase());
+          let headerRow = "<tr><th><input type='checkbox' onchange='toggleAll(this)'></th><th>S/N</th><th>NAMES</th>";
+          subjects.forEach(sub => {
+            headerRow += `<th>${sub} CA</th><th>${sub} EXAM</th><th>${sub} TOTAL</th><th>${sub} POSITION</th><th>${sub} GRADE</th><th>${sub} CLASS AVERAGE</th>`;
+          });
+          headerRow += "<th>GRAND TOTAL</th><th>GRAND AVERAGE</th><th>POSITION (IN CLASS)</th></tr>";
+          table.innerHTML = headerRow;
+
+          data.students.forEach(student => {
+            let row = `<tr><td><input type='checkbox' class='recordCheckbox' value='${student.serialNumber}'></td><td>${student.serialNumber}</td><td>${student.name}</td>`;
+            subjects.forEach(sub => {
+              const scores = student.scores[sub] || { ca: "", exam: "", total: "", position: "", grade: "", classAverage: "" };
+              row += `<td>${scores.ca}</td><td>${scores.exam}</td><td>${scores.total}</td><td>${scores.position}</td><td>${scores.grade}</td><td>${scores.classAverage}</td>`;
             });
+            row += `<td>${student.grandTotal}</td><td>${student.grandAverage}</td><td>${student.classPosition}</td></tr>`;
+            table.innerHTML += row;
+          });
         });
     }
 
     function toggleAll(source) {
-      const checkboxes = document.querySelectorAll(".recordCheckbox");
-      checkboxes.forEach(cb => cb.checked = source.checked);
+      document.querySelectorAll(".recordCheckbox").forEach(cb => cb.checked = source.checked);
     }
 
     function deleteSelected() {
       const selected = Array.from(document.querySelectorAll(".recordCheckbox:checked")).map(cb => cb.value);
-      if (selected.length === 0) {
-        alert("Please select at least one record to delete!");
-        return;
-      }
-      fetch("/delete-record", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ class: document.getElementById("classSelect").value, serialNumbers: selected })
-      })
-        .then(() => {
-          loadRecords();
-          loadLog();
+      if (selected.length === 0) { alert("Please select at least one record to delete!"); return; }
+      const className = document.getElementById("classSelect").value;
+      if (confirm(`Delete ${selected.length} records from ${className.toUpperCase()}?`)) {
+        document.getElementById("spinner").style.display = "block";
+        fetch("/delete-record", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ class: className, serialNumbers: selected })
         })
-        .catch(error => alert("Delete error: " + error.message));
-    }
-
-    function loadSubjects() {
-      const className = document.getElementById("resetClassSelect").value;
-      if (!className) {
-        document.getElementById("subjectsToDelete").innerHTML = "";
-        return;
+          .then(() => {
+            document.getElementById("spinner").style.display = "none";
+            loadRecords();
+            loadLog();
+          })
+          .catch(error => {
+            document.getElementById("spinner").style.display = "none";
+            alert("Delete error: " + error.message);
+          });
       }
-      fetch(`/get-subjects?class=${className}`)
-        .then(response => response.json())
-        .then(subjects => {
-          const select = document.getElementById("subjectsToDelete");
-          select.innerHTML = subjects.map(sub => `<option value="${sub}">${sub}</option>`).join("");
-        });
-    }
-
-    function deleteSubjects() {
-      const className = document.getElementById("resetClassSelect").value;
-      const subjectsToDelete = Array.from(document.getElementById("subjectsToDelete").selectedOptions).map(opt => opt.value);
-      if (!className || subjectsToDelete.length === 0) {
-        alert("Please select a class and at least one subject to delete!");
-        return;
-      }
-      fetch("/delete-subjects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ class: className, subjects: subjectsToDelete })
-      })
-        .then(() => {
-          loadSubjects();
-          loadLog();
-        })
-        .catch(error => alert("Delete error: " + error.message));
     }
 
     function downloadAllScores() {
+      document.getElementById("spinner").style.display = "block";
       fetch("/download-all-scores")
         .then(response => {
           if (!response.ok) throw new Error("Download failed!");
           return response.blob();
         })
         .then(blob => {
+          document.getElementById("spinner").style.display = "none";
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
@@ -258,11 +285,36 @@
           a.remove();
           window.URL.revokeObjectURL(url);
         })
-        .catch(error => alert(error.message));
+        .catch(error => {
+          document.getElementById("spinner").style.display = "none";
+          alert(error.message);
+        });
     }
 
-    function editRecord(serial) {
-      window.open(`/index.html?edit=${serial}&class=${document.getElementById("classSelect").value}`, "_blank");
+    function downloadClassScores(className) {
+      if (!className) return;
+      document.getElementById("spinner").style.display = "block";
+      fetch(`/download-scores?class=${className}`)
+        .then(response => {
+          if (!response.ok) throw new Error("Download failed!");
+          return response.blob();
+        })
+        .then(blob => {
+          document.getElementById("spinner").style.display = "none";
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${className}_scores.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          document.querySelector(".download-button").value = "";
+        })
+        .catch(error => {
+          document.getElementById("spinner").style.display = "none";
+          alert(error.message);
+        });
     }
 
     function loadLog() {
@@ -273,9 +325,14 @@
         });
     }
 
+    function backToLogin() { window.location.href = "/index.html"; }
+
     function logout() {
       adminLoggedIn = false;
+      localStorage.removeItem("adminLoggedIn");
+      localStorage.removeItem("loginTime");
       document.getElementById("dashboard").style.display = "none";
+      document.getElementById("header").style.display = "none";
       document.getElementById("admin-container").style.display = "block";
       document.getElementById("adminUsername").value = "";
       document.getElementById("adminPassword").value = "";

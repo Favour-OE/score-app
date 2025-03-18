@@ -1,22 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Teacher Dashboard</title>
+  <title>Dashboard</title>
   <style>
     body {
       background: linear-gradient(135deg, #6B7280, #9333EA);
-      font-family: 'Times New Roman', Times, serif;
+      font-family: Arial, sans-serif;
       margin: 0;
-      min-height: 100vh;
+      padding: 0;
       display: flex;
       flex-direction: column;
-      justify-content: center;
       align-items: center;
       color: #1F2937;
-      font-size: 16px;
+      font-size: 18px;
     }
     #header {
-      position: fixed;
+      position: sticky;
       top: 0;
       width: 100%;
       background: #14B8A6;
@@ -26,108 +25,81 @@
       z-index: 2;
       box-sizing: border-box;
     }
-    #header span {
-      font-size: 18px;
-      font-weight: bold;
-    }
-    #dashboard {
-      background: white;
-      padding: 20px;
+    #header span { font-size: 20px; font-weight: bold; }
+    #dashboard-container {
+      background: #FFFFFF;
+      padding: 30px;
       border-radius: 15px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
       text-align: center;
-      animation: bounceIn 0.5s ease;
       width: 100%;
-      max-width: 100vw;
-      margin-top: 60px;
+      max-width: 600px;
+      margin: 20px 0;
       box-sizing: border-box;
     }
-    h2 { color: #4B5EAA; margin-bottom: 20px; }
+    h2 { color: #4B5EAA; margin-bottom: 20px; font-weight: bold; }
     button {
-      background: #14B8A6;
-      color: white;
       border: none;
-      padding: 15px 30px;
+      padding: 12px 24px;
       border-radius: 8px;
-      margin: 10px;
+      margin: 8px;
       cursor: pointer;
-      transition: transform 0.2s, background 0.3s;
+      font-size: 18px;
       width: 100%;
       max-width: 300px;
-      font-size: 18px;
+      transition: background 0.3s;
     }
-    button:hover {
-      background: #5EEAD4;
-      transform: scale(1.05);
-    }
-    .button-group {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-      margin: 20px 0;
-    }
-    .back-button, .logout-button {
-      background: #14B8A6;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: transform 0.2s, background 0.3s;
-      font-size: 16px;
-    }
-    .back-button:hover, .logout-button:hover {
-      background: #5EEAD4;
-      transform: scale(1.05);
-    }
-    .back-button::before { content: "← "; }
+    .action-button { background: #14B8A6; color: white; }
+    .action-button:hover { background: #2DD4BF; }
+    .neutral-button { background: #9CA3AF; color: white; }
+    .neutral-button:hover { background: #6B7280; }
+    .button-group { display: flex; flex-direction: column; align-items: center; gap: 20px; }
     @media (max-width: 600px) {
-      #dashboard { padding: 15px; }
-      button { max-width: 100%; font-size: 16px; }
-      #header { font-size: 14px; padding: 8px; }
+      #dashboard-container { padding: 20px; max-width: 100%; }
+      button { max-width: 100%; }
+      #header { padding: 8px; }
     }
-    @keyframes bounceIn { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
   </style>
 </head>
 <body>
   <div id="header">
-    <button class="back-button" onclick="backToLogin()">Back</button>
+    <button class="neutral-button" onclick="backToLogin()" style="float: left;">← Back</button>
     <span id="classInfo"></span>
-    <button class="logout-button" onclick="logout()" style="float: right;">Logout</button>
+    <button class="neutral-button" onclick="logout()" style="float: right;">Logout</button>
   </div>
-  <div id="dashboard">
+  <div id="dashboard-container">
     <h2>Teacher Dashboard</h2>
     <div class="button-group">
-      <button onclick="addSubjects()">Add Subjects</button>
-      <button onclick="enterScores()">Enter Assessment Record</button>
-      <button onclick="viewRecords()">View Existing Records</button>
+      <button class="action-button" onclick="enterRecords()">Enter Assessment Records</button>
+      <button class="action-button" onclick="viewRecords()">View Records</button>
     </div>
   </div>
 
   <script>
+    const TIMEOUT_MINUTES = 30;
+    function checkTimeout() {
+      const loginTime = localStorage.getItem("loginTime");
+      if (loginTime) {
+        const timeDiff = (Date.now() - parseInt(loginTime)) / 1000 / 60;
+        if (timeDiff > TIMEOUT_MINUTES) {
+          logout();
+        }
+      }
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
-    const currentClass = urlParams.get("class") || localStorage.getItem("currentClass");
+    const currentClass = urlParams.get("class") || localStorage.getItem("currentClass") || "";
+    if (!currentClass) window.location.href = "/index.html";
     document.getElementById("classInfo").textContent = `Logged in as: ${currentClass.toUpperCase()}`;
+    checkTimeout();
 
-    function addSubjects() {
-      window.location.href = `/setup.html?class=${currentClass}`;
-    }
-
-    function enterScores() {
-      window.location.href = `/index.html?class=${currentClass}`;
-    }
-
-    function viewRecords() {
-      window.location.href = `/records.html?class=${currentClass}`;
-    }
-
-    function backToLogin() {
-      window.location.href = "/index.html";
-    }
+    function enterRecords() { window.location.href = `/records.html?class=${currentClass}&mode=enter`; }
+    function viewRecords() { window.location.href = `/records.html?class=${currentClass}&mode=view`; }
+    function backToLogin() { window.location.href = "/index.html"; }
 
     function logout() {
       localStorage.removeItem("currentClass");
+      localStorage.removeItem("loginTime");
       window.location.href = "/index.html";
     }
   </script>
