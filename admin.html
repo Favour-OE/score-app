@@ -139,7 +139,6 @@
             document.getElementById("admin-container").style.display = "none";
             document.getElementById("dashboard").style.display = "block";
             loadClasses();
-            alert(text);
           } else {
             alert("Invalid admin credentials!");
           }
@@ -198,20 +197,16 @@
         alert("Please select at least one record to delete!");
         return;
       }
-      if (confirm(`Are you sure you want to delete ${selected.length} record(s)?`)) {
-        fetch("/delete-record", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ class: document.getElementById("classSelect").value, serialNumbers: selected })
+      fetch("/delete-record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ class: document.getElementById("classSelect").value, serialNumbers: selected })
+      })
+        .then(() => {
+          loadRecords();
+          loadLog();
         })
-          .then(response => response.text())
-          .then(text => {
-            alert(text);
-            loadRecords();
-            loadLog();
-          })
-          .catch(error => alert("Delete error: " + error.message));
-      }
+        .catch(error => alert("Delete error: " + error.message));
     }
 
     function loadSubjects() {
@@ -240,9 +235,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ class: className, subjects: subjectsToDelete })
       })
-        .then(response => response.text())
-        .then(text => {
-          alert(text);
+        .then(() => {
           loadSubjects();
           loadLog();
         })
@@ -286,10 +279,7 @@
       document.getElementById("admin-container").style.display = "block";
       document.getElementById("adminUsername").value = "";
       document.getElementById("adminPassword").value = "";
-      alert("Logged out!");
     }
-
-    if (adminLoggedIn) loadClasses();
   </script>
 </body>
 </html>

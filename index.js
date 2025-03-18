@@ -33,6 +33,8 @@ cron.schedule("*/10 * * * *", () => {
 
 app.get("/ping", (req, res) => res.send("Alive!"));
 
+app.get("/dashboard.html", (req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
+
 app.post("/submit-scores", async (req, res) => {
   const { class: className, name, scores, serial } = req.body;
   let newSerial = serial;
@@ -55,7 +57,7 @@ app.post("/submit-scores", async (req, res) => {
 
   await db.collection("scores").insertMany(data);
   await generateExcel(className);
-  res.send("Scores submitted successfully!");
+  res.send("Scores submitted");
 });
 
 app.get("/get-scores", async (req, res) => {
@@ -77,7 +79,7 @@ app.post("/save-subjects", async (req, res) => {
     { $set: { subjects } },
     { upsert: true }
   );
-  res.send("Subjects saved!");
+  res.send("Subjects saved");
 });
 
 app.get("/get-subjects", async (req, res) => {
@@ -140,9 +142,9 @@ app.get("/get-classes", async (req, res) => {
 app.post("/delete-record", async (req, res) => {
   const { class: className, serialNumbers } = req.body;
   await db.collection("scores").deleteMany({ class: className, serialNumber: { $in: serialNumbers.map(Number) } });
-  await generateExcel(className); // Regenerate Excel after delete
+  await generateExcel(className);
   await db.collection("logs").insertOne({ timestamp: new Date().toISOString(), action: `Deleted records S/N ${serialNumbers.join(", ")} for ${className}` });
-  res.send("Records deleted!");
+  res.send("Records deleted");
 });
 
 app.post("/delete-subjects", async (req, res) => {
@@ -156,7 +158,7 @@ app.post("/delete-subjects", async (req, res) => {
   await db.collection("scores").deleteMany({ class: className, subject: { $in: subjects } });
   await generateExcel(className);
   await db.collection("logs").insertOne({ timestamp: new Date().toISOString(), action: `Deleted subjects ${subjects.join(", ")} for ${className}` });
-  res.send("Subjects deleted!");
+  res.send("Subjects deleted");
 });
 
 app.get("/download-all-scores", async (req, res) => {
@@ -167,7 +169,7 @@ app.get("/download-all-scores", async (req, res) => {
   archive.pipe(res);
 
   for (const className of classes) {
-    await generateExcel(className); // Ensure latest data
+    await generateExcel(className);
     archive.file(`${className}_scores.xlsx`, { name: `${className}_scores.xlsx` });
   }
 

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Teacher Dashboard</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #6B7280, #9333EA);
+      font-family: 'Times New Roman', Times, serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #1F2937;
+      font-size: 16px;
+    }
+    #header {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background: #14B8A6;
+      color: white;
+      padding: 10px;
+      text-align: center;
+      z-index: 2;
+      box-sizing: border-box;
+    }
+    #dashboard {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      animation: bounceIn 0.5s ease;
+      width: 100%;
+      max-width: 100vw;
+      margin-top: 60px;
+      box-sizing: border-box;
+    }
+    h2 { color: #4B5EAA; margin-bottom: 20px; }
+    button {
+      background: #14B8A6;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 8px;
+      margin: 10px;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.3s;
+      width: 100%;
+      max-width: 300px;
+      font-size: 18px;
+    }
+    button:hover {
+      background: #5EEAD4;
+      transform: scale(1.05);
+    }
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      margin: 20px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      overflow-x: auto;
+      display: none;
+    }
+    th, td {
+      border: 1px solid #D1D5DB;
+      padding: 10px;
+      text-align: center;
+      min-width: 60px;
+    }
+    th { background: #4B5EAA; color: white; }
+    tr:nth-child(even) { background: #F0F4F8; }
+    tr:hover { background: #E2E8F0; }
+    @media (max-width: 600px) {
+      #dashboard { padding: 15px; }
+      button { max-width: 100%; font-size: 16px; }
+      #header { font-size: 14px; padding: 8px; }
+      table { font-size: 14px; }
+    }
+    @keyframes bounceIn { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); } }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <span id="classInfo"></span>
+    <button onclick="logout()" style="float: right;">Logout</button>
+  </div>
+  <div id="dashboard">
+    <h2>Teacher Dashboard</h2>
+    <div class="button-group">
+      <button onclick="addSubjects()">Add Subjects</button>
+      <button onclick="enterScores()">Enter Assessment Record</button>
+      <button onclick="toggleRecords()">View Existing Records</button>
+    </div>
+    <table id="recordsTable"></table>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentClass = urlParams.get("class") || localStorage.getItem("currentClass");
+    document.getElementById("classInfo").textContent = `Logged in as: ${currentClass.toUpperCase()}`;
+
+    function addSubjects() {
+      window.location.href = `/setup.html?class=${currentClass}`;
+    }
+
+    function enterScores() {
+      window.location.href = `/index.html?class=${currentClass}`;
+    }
+
+    function toggleRecords() {
+      const table = document.getElementById("recordsTable");
+      const button = document.querySelector("button[onclick='toggleRecords()']");
+      if (table.style.display === "none") {
+        viewRecords();
+        table.style.display = "block";
+        button.textContent = "Hide Records";
+      } else {
+        table.style.display = "none";
+        button.textContent = "View Existing Records";
+      }
+    }
+
+    function viewRecords() {
+      fetch(`/get-scores?class=${currentClass}`)
+        .then(response => response.json())
+        .then(data => {
+          const table = document.getElementById("recordsTable");
+          fetch(`/get-subjects?class=${currentClass}`)
+            .then(response => response.json())
+            .then(subjects => {
+              table.innerHTML = "<tr><th>S/N</th><th>Name</th>" + subjects.map(sub => `<th colspan="2">${sub}</th>`).join("") + "</tr>" +
+                                "<tr><th></th><th></th>" + subjects.map(() => `<th>CA</th><th>Exam</th>`).join("") + "</tr>";
+              const studentData = {};
+              data.forEach(entry => {
+                if (!studentData[entry.serialNumber]) {
+                  studentData[entry.serialNumber] = { sn: entry.serialNumber, name: entry.studentName, scores: {} };
+                }
+                studentData[entry.serialNumber].scores[entry.subject] = { ca: entry.ca, exam: entry.exam };
+              });
+              Object.values(studentData).forEach(student => {
+                table.innerHTML += "<tr><td>" + student.sn + "</td><td>" + student.name + "</td>" +
+                                  subjects.map(sub => `<td>${student.scores[sub]?.ca || ""}</td><td>${student.scores[sub]?.exam || ""}</td>`).join("") + "</tr>";
+              });
+            });
+        });
+    }
+
+    function logout() {
+      localStorage.removeItem("currentClass");
+      window.location.href = "/index.html";
+    }
+  </script>
+</body>
+</html>
