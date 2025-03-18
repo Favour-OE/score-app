@@ -35,6 +35,8 @@ app.get("/ping", (req, res) => res.send("Alive!"));
 
 app.get("/dashboard.html", (req, res) => res.sendFile(path.join(__dirname, "dashboard.html")));
 
+app.get("/records.html", (req, res) => res.sendFile(path.join(__dirname, "records.html")));
+
 app.post("/submit-scores", async (req, res) => {
   const { class: className, name, scores, serial } = req.body;
   let newSerial = serial;
