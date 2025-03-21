@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Edit Assessment</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #6B7280, #9333EA);
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: #1F2937;
+    }
+    #header {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      background: #14B8A6;
+      color: white;
+      padding: 10px;
+      text-align: center;
+      z-index: 2;
+      box-sizing: border-box;
+    }
+    #header span { font-size: 20px; font-weight: bold; }
+    #container {
+      background: #FFFFFF;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      width: 100%;
+      margin: 20px auto;
+      box-sizing: border-box;
+    }
+    #old-ui, #new-ui { display: none; }
+    #old-ui { max-width: 400px; }
+    #new-ui { max-width: 600px; }
+    h2 { color: #4B5EAA; margin-bottom: 20px; font-weight: bold; }
+    input, select {
+      background: white;
+      border: 2px solid #D1D5DB;
+      border-radius: 8px;
+      padding: 10px;
+      margin: 8px 0;
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 16px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    input[readonly] { background: #F0F4F8; }
+    select:focus, input:focus {
+      border-color: #14B8A6;
+      box-shadow: 0 0 5px rgba(20, 184, 166, 0.5);
+      outline: none;
+    }
+    button {
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      margin: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    .action-button { background: #14B8A6; color: white; }
+    .action-button:hover { background: #2DD4BF; }
+    .neutral-button { background: #9CA3AF; color: white; }
+    .neutral-button:hover { background: #6B7280; }
+    .button-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #D1D5DB;
+      padding: 10px;
+      text-align: center;
+    }
+    th {
+      background: #2C5282;
+      color: white;
+      font-weight: bold;
+    }
+    tr:nth-child(even) { background: #F0F4F8; }
+    tr:hover { background: #DBEAFE; }
+    .error-message {
+      color: #EF4444;
+      font-size: 12px;
+      display: block;
+      margin-top: -6px;
+      margin-bottom: 6px;
+    }
+    @media (max-width: 600px) {
+      #container { padding: 20px; max-width: 100%; }
+      button { width: 100%; max-width: 200px; }
+      #header { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <button class="neutral-button" onclick="backToRecords()" style="float: left;">← Back</button>
+    <span id="classInfo"></span>
+  </div>
+  <div id="container">
+    <div id="old-ui">
+      <h2>Edit Assessment Records</h2>
+      <input type="text" id="studentNameOld" placeholder="Student Name" readonly>
+      <select id="subjectSelect" onchange="updateScores()"></select>
+      <input type="number" id="ca1" placeholder="1st CA (max 20)" min="0" max="20" oninput="validateScore(this, 20)">
+      <span id="ca1-error" class="error-message"></span>
+      <input type="number" id="ca2" placeholder="2nd CA (max 20)" min="0" max="20" oninput="validateScore(this, 20)">
+      <span id="ca2-error" class="error-message"></span>
+      <input type="number" id="exam" placeholder="Exam (max 60)" min="0" max="60" oninput="validateScore(this, 60)">
+      <span id="exam-error" class="error-message"></span>
+      <div class="button-group">
+        <button class="action-button" onclick="saveRecord()">Save</button>
+        <button class="action-button" onclick="updateRecords()">Update</button>
+      </div>
+    </div>
+    <div id="new-ui">
+      <h2>Edit Assessment Scores</h2>
+      <input type="text" id="studentNameNew" placeholder="Student Name" readonly><br>
+      <table id="scoresTable">
+        <tr><th>Subject</th><th>1st CA</th><th>2nd CA</th><th>Exam</th></tr>
+      </table>
+      <button class="action-button" onclick="updateScores()">Update Scores</button>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const className = urlParams.get("class") || localStorage.getItem("currentClass");
+    const serialNumber = urlParams.get("serial");
+    const initialSubject = urlParams.get("subject");
+    if (!className || !serialNumber) window.location.href = "/index.html";
+    document.getElementById("classInfo").textContent = `Logged in as: ${className.toUpperCase()}`;
+
+    const isScienceClass = className === "sss2b" || className === "sss3b";
+    document.getElementById("old-ui").style.display = isScienceClass ? "none" : "block";
+    document.getElementById("new-ui").style.display = isScienceClass ? "block" : "none";
+
+    let subjects = [];
+    let allScores = {};
+    let tempRecords = [];
+
+    Promise.all([
+      fetch(`/get-subjects?class=${className}`).then(res => res.json()),
+      fetch(`/get-scores?class=${className}`).then(res => res.json())
+    ])
+      .then(([subjectList, scoreData]) => {
+        subjects = subjectList;
+        const studentRecords = scoreData.records.filter(r => r.serialNumber === parseInt(serialNumber));
+        studentRecords.forEach(r => {
+          allScores[r.subject] = { ca1: r.ca1 || 0, ca2: r.ca2 || 0, exam: r.exam || 0 };
+        });
+
+        if (isScienceClass) {
+          loadScienceUI(studentRecords);
+        } else {
+          loadOldUI(studentRecords);
+        }
+      });
+
+    // Real-time score validation
+    function validateScore(input, max) {
+      const value = parseFloat(input.value) || 0;
+      const errorSpan = document.getElementById(`${input.id}-error`) || input.nextElementSibling;
+      if (value > max) {
+        errorSpan.textContent = `Max ${max}`;
+      } else {
+        errorSpan.textContent = "";
+      }
+    }
+
+    // Old UI Functions (Non-sss2b/sss3b)
+    function loadOldUI(records) {
+      const studentName = records.length > 0 ? records[0].studentName : "";
+      document.getElementById("studentNameOld").value = studentName;
+
+      const subjectSelect = document.getElementById("subjectSelect");
+      subjectSelect.innerHTML = subjects.map(sub => `<option value="${sub}">${sub.toUpperCase()}</option>`).join("");
+      subjectSelect.value = initialSubject || subjects[0];
+      updateScores();
+    }
+
+    function updateScores() {
+      if (isScienceClass) {
+        updateScienceScores();
+        return;
+      }
+      const subject = document.getElementById("subjectSelect").value;
+      const scores = allScores[subject] || { ca1: 0, ca2: 0, exam: 0 };
+      document.getElementById("ca1").value = scores.ca1;
+      document.getElementById("ca2").value = scores.ca2;
+      document.getElementById("exam").value = scores.exam;
+    }
+
+    function saveRecord() {
+      const studentName = document.getElementById("studentNameOld").value;
+      const subject = document.getElementById("subjectSelect").value;
+      const ca1 = parseFloat(document.getElementById("ca1").value) || 0;
+      const ca2 = parseFloat(document.getElementById("ca2").value) || 0;
+      const exam = parseFloat(document.getElementById("exam").value) || 0;
+
+      if (!studentName || !subject) {
+        alert("Please ensure student name and subject are set!");
+        return;
+      }
+      if (ca1 > 20) {
+        alert("Max score exceeded! 1st CA cannot exceed 20.");
+        return;
+      }
+      if (ca2 > 20) {
+        alert("Max score exceeded! 2nd CA cannot exceed 20.");
+        return;
+      }
+      if (exam > 60) {
+        alert("Max score exceeded! Exam cannot exceed 60.");
+        return;
+      }
+
+      tempRecords = tempRecords.filter(r => r.subject !== subject); // Replace if exists
+      tempRecords.push({ subject, ca1, ca2, exam });
+      alert(`Saved ${subject} scores locally!`);
+    }
+
+    function updateRecords() {
+      if (tempRecords.length === 0) {
+        alert("No records to update!");
+        return;
+      }
+      fetch("/update-scores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ class: className, serialNumber: parseInt(serialNumber), scores: tempRecords })
+      })
+        .then(response => response.text())
+        .then(() => {
+          alert("Records updated successfully!");
+          tempRecords = [];
+          fetch(`/get-scores?class=${className}`)
+            .then(res => res.json())
+            .then(data => {
+              const studentRecords = data.records.filter(r => r.serialNumber === parseInt(serialNumber));
+              allScores = {};
+              studentRecords.forEach(r => {
+                allScores[r.subject] = { ca1: r.ca1 || 0, ca2: r.ca2 || 0, exam: r.exam || 0 };
+              });
+              updateScores();
+            });
+        })
+        .catch(error => alert("Update error: " + error.message));
+    }
+
+    // New UI Functions (sss2b/sss3b)
+    function loadScienceUI(records) {
+      const studentName = records.length > 0 ? records[0].studentName : "";
+      document.getElementById("studentNameNew").value = studentName;
+
+      const table = document.getElementById("scoresTable");
+      const groupSubjects = records.some(r => r.subject === "economic") ? 
+        ["english language", "mathematics", "civic edu.", "biology", "economic", "chemistry", "physics", "french", "data processing", "geography"] :
+        ["english language", "mathematics", "civic edu.", "agric science", "biology", "chemistry", "physics", "french", "data processing", "geography"];
+      
+      table.innerHTML = "<tr><th>Subject</th><th>1st CA</th><th>2nd CA</th><th>Exam</th></tr>";
+      groupSubjects.forEach(subject => {
+        const scores = allScores[subject] || { ca1: 0, ca2: 0, exam: 0 };
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${subject.toUpperCase()}</td>
+          <td><input type="number" min="0" max="20" class="ca1" data-subject="${subject}" value="${scores.ca1}" oninput="validateScore(this, 20)"><span class="error-message"></span></td>
+          <td><input type="number" min="0" max="20" class="ca2" data-subject="${subject}" value="${scores.ca2}" oninput="validateScore(this, 20)"><span class="error-message"></span></td>
+          <td><input type="number" min="0" max="60" class="exam" data-subject="${subject}" value="${scores.exam}" oninput="validateScore(this, 60)"><span class="error-message"></span></td>
+        `;
+        table.appendChild(row);
+      });
+    }
+
+    function updateScienceScores() {
+      const scores = [];
+      document.querySelectorAll("#scoresTable tr:not(:first-child)").forEach(row => {
+        const subject = row.querySelector(".ca1").dataset.subject;
+        const ca1 = parseInt(row.querySelector(".ca1").value) || 0;
+        const ca2 = parseInt(row.querySelector(".ca2").value) || 0;
+        const exam = parseInt(row.querySelector(".exam").value) || 0;
+        if (ca1 > 20 || ca2 > 20 || exam > 60) {
+          alert(`Scores for ${subject.toUpperCase()} exceed maximum allowed values!`);
+          return;
+        }
+        scores.push({ subject, ca1, ca2, exam });
+      });
+
+      fetch("/update-scores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ class: className, serialNumber: parseInt(serialNumber), scores })
+      })
+        .then(response => response.text())
+        .then(() => {
+          alert("Scores updated successfully!");
+          window.location.reload();
+        })
+        .catch(error => alert("Update error: " + error.message));
+    }
+
+    function backToRecords() {
+      window.location.href = `/view-records.html?class=${className}`;
+    }
+  </script>
+</body>
+</html>

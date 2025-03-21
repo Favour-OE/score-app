@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Dashboard</title>
+  <title>Teacher Dashboard</title>
   <style>
     body {
       background: linear-gradient(135deg, #6B7280, #9333EA);
@@ -26,14 +26,14 @@
       box-sizing: border-box;
     }
     #header span { font-size: 20px; font-weight: bold; }
-    #dashboard-container {
+    #dashboard {
       background: #FFFFFF;
       padding: 30px;
       border-radius: 15px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
       text-align: center;
       width: 100%;
-      max-width: 600px;
+      max-width: 90%;
       margin: 20px 0;
       box-sizing: border-box;
     }
@@ -46,16 +46,16 @@
       cursor: pointer;
       font-size: 18px;
       width: 100%;
-      max-width: 300px;
+      max-width: 200px;
       transition: background 0.3s;
     }
     .action-button { background: #14B8A6; color: white; }
     .action-button:hover { background: #2DD4BF; }
     .neutral-button { background: #9CA3AF; color: white; }
     .neutral-button:hover { background: #6B7280; }
-    .button-group { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .button-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
     @media (max-width: 600px) {
-      #dashboard-container { padding: 20px; max-width: 100%; }
+      #dashboard { padding: 20px; max-width: 100%; }
       button { max-width: 100%; }
       #header { padding: 8px; }
     }
@@ -67,16 +67,22 @@
     <span id="classInfo"></span>
     <button class="neutral-button" onclick="logout()" style="float: right;">Logout</button>
   </div>
-  <div id="dashboard-container">
+  <div id="dashboard">
     <h2>Teacher Dashboard</h2>
     <div class="button-group">
-      <button class="action-button" onclick="enterRecords()">Enter Assessment Records</button>
-      <button class="action-button" onclick="viewRecords()">View Records</button>
+      <button class="action-button" onclick="goToRecords()">Enter Assessment Records</button>
+      <button class="action-button" onclick="goToViewRecords()">View Records</button>
     </div>
   </div>
 
   <script>
     const TIMEOUT_MINUTES = 30;
+    const urlParams = new URLSearchParams(window.location.search);
+    const className = urlParams.get("class") || localStorage.getItem("currentClass");
+    if (!className) window.location.href = "/index.html";
+    localStorage.setItem("currentClass", className);
+    document.getElementById("classInfo").textContent = `Logged in as: ${className.toUpperCase()}`;
+
     function checkTimeout() {
       const loginTime = localStorage.getItem("loginTime");
       if (loginTime) {
@@ -86,16 +92,19 @@
         }
       }
     }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const currentClass = urlParams.get("class") || localStorage.getItem("currentClass") || "";
-    if (!currentClass) window.location.href = "/index.html";
-    document.getElementById("classInfo").textContent = `Logged in as: ${currentClass.toUpperCase()}`;
     checkTimeout();
 
-    function enterRecords() { window.location.href = `/records.html?class=${currentClass}&mode=enter`; }
-    function viewRecords() { window.location.href = `/records.html?class=${currentClass}&mode=view`; }
-    function backToLogin() { window.location.href = "/index.html"; }
+    function goToRecords() {
+      window.location.href = `/enter-assessment.html?class=${className}`;
+    }
+
+    function goToViewRecords() {
+      window.location.href = `/view-records.html?class=${className}`;
+    }
+
+    function backToLogin() {
+      window.location.href = "/index.html";
+    }
 
     function logout() {
       localStorage.removeItem("currentClass");

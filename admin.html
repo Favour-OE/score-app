@@ -116,19 +116,15 @@
       top: 0;
       z-index: 2;
     }
-    td:nth-child(2), td:nth-child(3) {
+    th:nth-child(2), td:nth-child(2) {
       position: sticky;
       left: 0;
       background: #F0F4F8;
-      z-index: 1;
+      z-index: 3;
     }
-    th:nth-child(2) { left: 0; z-index: 3; }
-    th:nth-child(3) { left: 80px; z-index: 3; }
-    td:nth-child(2) { left: 0; }
-    td:nth-child(3) { left: 80px; }
+    td:nth-child(2) { background: #F0F4F8; }
     tr:nth-child(even) { background: #F0F4F8; }
     tr:hover { background: #DBEAFE; }
-    #log { margin-top: 20px; font-size: 16px; text-align: left; }
     .spinner {
       display: none;
       width: 20px;
@@ -171,14 +167,12 @@
       <select class="download-button" onchange="downloadClassScores(this.value)">
         <option value="">Download Class Scores</option>
       </select>
-      <button class="neutral-button" onclick="logout()">Logout</button>
     </div>
     <h3>Manage Records</h3>
     <select id="classSelect" onchange="loadRecords()"></select>
     <table id="recordsTable"></table>
     <div id="spinner" class="spinner"></div>
     <button class="delete-button" onclick="deleteSelected()">Delete Selected</button>
-    <div id="log"></div>
   </div>
 
   <script>
@@ -189,19 +183,30 @@
         const timeDiff = (Date.now() - parseInt(loginTime)) / 1000 / 60;
         if (timeDiff > TIMEOUT_MINUTES) {
           logout();
+          return true;
         }
+        return false;
       }
+      return true;
     }
 
     let adminLoggedIn = localStorage.getItem("adminLoggedIn") === "true";
-    if (adminLoggedIn) { showDashboard(); checkTimeout(); }
+    if (adminLoggedIn && !checkTimeout()) {
+      showDashboard();
+    } else {
+      localStorage.removeItem("adminLoggedIn");
+      localStorage.removeItem("loginTime");
+      document.getElementById("admin-container").style.display = "block";
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("header").style.display = "none";
+    }
 
     function togglePassword() {
       const passwordInput = document.getElementById("adminPassword");
       const eyeIcon = document.querySelector(".eye-icon");
       if (passwordInput.type === "password") {
         passwordInput.type = "text";
-        eyeIcon.textContent = "👁️‍🗨️"; // Eye with slash (optional)
+        eyeIcon.textContent = "👁️‍🗨️";
       } else {
         passwordInput.type = "password";
         eyeIcon.textContent = "👁️";
@@ -256,23 +261,127 @@
         .then(data => {
           const table = document.getElementById("recordsTable");
           const subjects = data.subjects.map(s => s.toUpperCase());
+          const isScienceClass = className === "sss2b" || className === "sss3b";
+
+          // Build header row
           let headerRow = "<tr><th><input type='checkbox' onchange='toggleAll(this)'></th><th>S/N</th><th>NAMES</th>";
           subjects.forEach(sub => {
-            headerRow += `<th>${sub} CA</th><th>${sub} EXAM</th><th>${sub} TOTAL</th><th>${sub} POSITION</th><th>${sub} GRADE</th><th>${sub} CLASS AVERAGE</th>`;
+            headerRow += `
+              <th>${sub} 1st CA</th>
+              <th>${sub} 2nd CA</th>
+              <th>${sub} Exam</th>
+              <th>${sub} Total</th>
+              <th>${sub} Position</th>
+              <th>${sub} Grade</th>
+              <th>${sub} Class Average</th>
+            `;
           });
           headerRow += "<th>GRAND TOTAL</th><th>GRAND AVERAGE</th><th>POSITION (IN CLASS)</th></tr>";
           table.innerHTML = headerRow;
 
-          data.students.forEach(student => {
+          // Group records into students
+          const studentsMap = {};
+          data.records.forEach(record => {
+            if (!studentsMap[record.serialNumber]) {
+              studentsMap[record.serialNumber] = {
+                serialNumber: record.serialNumber,
+                name: record.studentName,
+                scores: {},
+                grandTotal: 0,
+                grandAverage: "",
+                classPosition: ""
+              };
+            }
+            studentsMap[record.serialNumber].scores[record.subject] = {
+              ca1: record.ca1 || 0,
+              ca2: record.ca2 || 0,
+              exam: record.exam || 0,
+              total: record.total || 0,
+              position: "",
+              grade: "",
+              classAverage: ""
+            };
+            studentsMap[record.serialNumber].grandTotal += record.total || 0;
+          });
+
+          const students = Object.values(studentsMap);
+          const isSenior = className.startsWith("sss");
+
+          // Calculate grand averages and class positions
+          students.forEach(student => {
+            const offeredSubjects = Object.keys(student.scores).length;
+            const maxScore = isScienceClass ? 1000 : subjects.length * 100; // 1000 for science, subjects * 100 for others
+            student.grandAverage = `${((student.grandTotal / maxScore) * 100).toFixed(1)}%`;
+          });
+          const grandTotals = students.map(s => s.grandTotal).sort((a, b) => b - a);
+          students.forEach(student => {
+            const pos = grandTotals.indexOf(student.grandTotal) + 1;
+            student.classPosition = getOrdinal(pos);
+          });
+
+          // Calculate subject-specific metrics
+          subjects.forEach(sub => {
+            const subjectTotals = students.map(s => s.scores[sub.toLowerCase()]?.total || 0).sort((a, b) => b - a);
+            const offeringStudents = students.filter(s => s.scores[sub.toLowerCase()]?.total > 0);
+            const classAvg = offeringStudents.length > 0 
+              ? (offeringStudents.reduce((sum, s) => sum + (s.scores[sub.toLowerCase()]?.total || 0), 0) / offeringStudents.length).toFixed(1) + "%" // Average as % of 100 for science
+              : "-";
+            students.forEach(student => {
+              const total = student.scores[sub.toLowerCase()]?.total || 0;
+              student.scores[sub.toLowerCase()] = student.scores[sub.toLowerCase()] || { ca1: 0, ca2: 0, exam: 0, total: 0, position: "-", grade: "-", classAverage: "-" };
+              const pos = total > 0 ? subjectTotals.indexOf(total) + 1 : 0;
+              student.scores[sub.toLowerCase()].position = total > 0 ? getOrdinal(pos) : "-";
+              student.scores[sub.toLowerCase()].grade = total > 0 ? getGrade(total, isSenior) : "-";
+              student.scores[sub.toLowerCase()].classAverage = isScienceClass ? (total > 0 ? `${total.toFixed(1)}%` : "-") : classAvg; // Per-subject avg for science
+            });
+          });
+
+          // Populate table rows
+          students.forEach(student => {
             let row = `<tr><td><input type='checkbox' class='recordCheckbox' value='${student.serialNumber}'></td><td>${student.serialNumber}</td><td>${student.name}</td>`;
             subjects.forEach(sub => {
-              const scores = student.scores[sub] || { ca: "", exam: "", total: "", position: "", grade: "", classAverage: "" };
-              row += `<td>${scores.ca}</td><td>${scores.exam}</td><td>${scores.total}</td><td>${scores.position}</td><td>${scores.grade}</td><td>${scores.classAverage}</td>`;
+              const scores = student.scores[sub.toLowerCase()];
+              row += `
+                <td>${scores.ca1 === 0 && scores.ca2 === 0 && scores.exam === 0 ? "-" : scores.ca1}</td>
+                <td>${scores.ca1 === 0 && scores.ca2 === 0 && scores.exam === 0 ? "-" : scores.ca2}</td>
+                <td>${scores.ca1 === 0 && scores.ca2 === 0 && scores.exam === 0 ? "-" : scores.exam}</td>
+                <td>${scores.ca1 === 0 && scores.ca2 === 0 && scores.exam === 0 ? "-" : scores.total}</td>
+                <td>${scores.position}</td>
+                <td>${scores.grade}</td>
+                <td>${scores.classAverage}</td>
+              `;
             });
             row += `<td>${student.grandTotal}</td><td>${student.grandAverage}</td><td>${student.classPosition}</td></tr>`;
             table.innerHTML += row;
           });
         });
+    }
+
+    function getOrdinal(n) {
+      if (n === 0) return "";
+      const s = ["th", "st", "nd", "rd"];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+
+    function getGrade(total, isSenior) {
+      if (isSenior) {
+        if (total >= 85) return "A1";
+        if (total >= 80) return "B2";
+        if (total >= 60) return "C4";
+        if (total >= 53) return "C5";
+        if (total >= 50) return "C6";
+        if (total >= 45) return "D7";
+        if (total >= 40) return "E8";
+        return "F9";
+      } else {
+        if (total >= 80) return "A";
+        if (total >= 70) return "B";
+        if (total >= 60) return "C";
+        if (total >= 50) return "P";
+        if (total >= 40) return "E";
+        return "F";
+      }
     }
 
     function toggleAll(source) {
@@ -293,7 +402,6 @@
           .then(() => {
             document.getElementById("spinner").style.display = "none";
             loadRecords();
-            loadLog();
           })
           .catch(error => {
             document.getElementById("spinner").style.display = "none";
@@ -349,14 +457,6 @@
         .catch(error => {
           document.getElementById("spinner").style.display = "none";
           alert(error.message);
-        });
-    }
-
-    function loadLog() {
-      fetch("/get-log")
-        .then(response => response.json())
-        .then(logs => {
-          document.getElementById("log").innerHTML = "<h3>Admin Actions</h3>" + logs.map(log => `<p>${log.timestamp}: ${log.action}</p>`).join("");
         });
     }
 
