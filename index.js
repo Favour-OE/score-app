@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const ExcelJS = require("exceljs");
 const MongoClient = require("mongodb").MongoClient;
@@ -8,13 +9,13 @@ const jwt = require("jsonwebtoken");
 
 const app = express();
 const port = 3000;
-const mongoUri = "mongodb+srv://scoreappuser:0908@cluster0.sutmk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin0908";
-const JWT_SECRET = process.env.JWT_SECRET; // Removed fallback
+const mongoUri = process.env.MONGO_URI; // Changed to env variable
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; // Removed fallback
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// Check if JWT_SECRET is set
-if (!JWT_SECRET) {
-  console.error("JWT_SECRET is not set in environment variables");
+// Check if required environment variables are set
+if (!mongoUri || !ADMIN_PASSWORD || !JWT_SECRET) {
+  console.error("Required environment variables (MONGO_URI, ADMIN_PASSWORD, JWT_SECRET) are missing");
   process.exit(1);
 }
 
@@ -23,7 +24,7 @@ const MAX_ATTEMPTS = 10;
 const TIME_WINDOW = 60 * 60 * 1000;
 
 app.use(express.json());
-app.use(express.static(".")); // We'll remove this later
+app.use(express.static("public"));
 
 let db;
 
@@ -114,11 +115,11 @@ function verifyToken(req, res, next) {
 app.get("/ping", (req, res) => res.send("Alive!"));
 
 // Protected routes for static pages
-app.get("/dashboard.html", verifyToken, (req, res) => res.sendFile(__dirname + "/dashboard.html"));
-app.get("/enter-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/enter-assessment.html"));
-app.get("/view-records.html", verifyToken, (req, res) => res.sendFile(__dirname + "/view-records.html"));
-app.get("/edit-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/edit-assessment.html"));
-app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/admin.html")); // Admin login page stays public
+app.get("/dashboard.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/dashboard.html"));
+app.get("/enter-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/enter-assessment.html"));
+app.get("/view-records.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/view-records.html"));
+app.get("/edit-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/edit-assessment.html"));
+app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/public/admin.html")); // Admin login page stays public
 
 app.post("/submit-scores", verifyToken, async (req, res) => {
   const { class: className, name, scores } = req.body;
