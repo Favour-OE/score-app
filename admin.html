@@ -221,18 +221,17 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password })
       })
-        .then(response => response.text())
-        .then(text => {
-          if (text === "Admin login successful!") {
+        .then(response => response.text().then(text => {
+          if (response.ok) {
             adminLoggedIn = true;
             localStorage.setItem("adminLoggedIn", "true");
             localStorage.setItem("loginTime", Date.now());
             showDashboard();
           } else {
-            alert("Wrong username or password!");
+            throw new Error(text);
           }
-        })
-        .catch(error => alert("Login error: " + error.message));
+        }))
+        .catch(error => alert(error.message));
     }
 
     function showDashboard() {
@@ -263,7 +262,6 @@
           const subjects = data.subjects.map(s => s.toUpperCase());
           const isScienceClass = className === "sss2b" || className === "sss3b";
 
-          // Build header row
           let headerRow = "<tr><th><input type='checkbox' onchange='toggleAll(this)'></th><th>S/N</th><th>NAMES</th>";
           subjects.forEach(sub => {
             headerRow += `
@@ -279,7 +277,6 @@
           headerRow += "<th>GRAND TOTAL</th><th>GRAND AVERAGE</th><th>POSITION (IN CLASS)</th></tr>";
           table.innerHTML = headerRow;
 
-          // Group records into students
           const studentsMap = {};
           data.records.forEach(record => {
             if (!studentsMap[record.serialNumber]) {
@@ -307,10 +304,9 @@
           const students = Object.values(studentsMap);
           const isSenior = className.startsWith("sss");
 
-          // Calculate grand averages and class positions
           students.forEach(student => {
             const offeredSubjects = Object.keys(student.scores).length;
-            const maxScore = isScienceClass ? 1000 : subjects.length * 100; // 1000 for science, subjects * 100 for others
+            const maxScore = isScienceClass ? 1000 : subjects.length * 100;
             student.grandAverage = `${((student.grandTotal / maxScore) * 100).toFixed(1)}%`;
           });
           const grandTotals = students.map(s => s.grandTotal).sort((a, b) => b - a);
@@ -319,12 +315,11 @@
             student.classPosition = getOrdinal(pos);
           });
 
-          // Calculate subject-specific metrics
           subjects.forEach(sub => {
             const subjectTotals = students.map(s => s.scores[sub.toLowerCase()]?.total || 0).sort((a, b) => b - a);
             const offeringStudents = students.filter(s => s.scores[sub.toLowerCase()]?.total > 0);
             const classAvg = offeringStudents.length > 0 
-              ? (offeringStudents.reduce((sum, s) => sum + (s.scores[sub.toLowerCase()]?.total || 0), 0) / offeringStudents.length).toFixed(1) + "%" // Average as % of 100 for science
+              ? (offeringStudents.reduce((sum, s) => sum + (s.scores[sub.toLowerCase()]?.total || 0), 0) / offeringStudents.length).toFixed(1) + "%"
               : "-";
             students.forEach(student => {
               const total = student.scores[sub.toLowerCase()]?.total || 0;
@@ -332,11 +327,10 @@
               const pos = total > 0 ? subjectTotals.indexOf(total) + 1 : 0;
               student.scores[sub.toLowerCase()].position = total > 0 ? getOrdinal(pos) : "-";
               student.scores[sub.toLowerCase()].grade = total > 0 ? getGrade(total, isSenior) : "-";
-              student.scores[sub.toLowerCase()].classAverage = isScienceClass ? (total > 0 ? `${total.toFixed(1)}%` : "-") : classAvg; // Per-subject avg for science
+              student.scores[sub.toLowerCase()].classAverage = isScienceClass ? (total > 0 ? `${total.toFixed(1)}%` : "-") : classAvg;
             });
           });
 
-          // Populate table rows
           students.forEach(student => {
             let row = `<tr><td><input type='checkbox' class='recordCheckbox' value='${student.serialNumber}'></td><td>${student.serialNumber}</td><td>${student.name}</td>`;
             subjects.forEach(sub => {

@@ -147,7 +147,7 @@
       const eyeIcon = document.querySelector(".eye-icon");
       if (passwordInput.type === "password") {
         passwordInput.type = "text";
-        eyeIcon.textContent = "👁️‍🗨️"; // Eye with slash (optional, can keep 👁️)
+        eyeIcon.textContent = "👁️‍🗨️";
       } else {
         passwordInput.type = "password";
         eyeIcon.textContent = "👁️";
@@ -157,20 +157,26 @@
     function login() {
       const username = document.getElementById("username").value.toLowerCase();
       const password = document.getElementById("password").value;
-      const validClass = username.match(/^(prenursery|nursery[1-2]|primary[1-5]|jss[1-3]|sss[1-3][ab]?)$/);
-      console.log(`Username: ${username}, Matches: ${validClass ? "Yes" : "No"}`); // Debug log
       document.getElementById("spinner").style.display = "block";
-      setTimeout(() => {
-        if (validClass && password === `${username}123`) {
-          localStorage.setItem("currentClass", username);
-          localStorage.setItem("loginTime", Date.now());
+      fetch("/teacher-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      })
+        .then(response => response.text().then(text => {
           document.getElementById("spinner").style.display = "none";
-          window.location.href = `/dashboard.html?class=${username}`;
-        } else {
+          if (response.ok) {
+            localStorage.setItem("currentClass", username);
+            localStorage.setItem("loginTime", Date.now());
+            window.location.href = `/dashboard.html?class=${username}`;
+          } else {
+            throw new Error(text);
+          }
+        }))
+        .catch(error => {
           document.getElementById("spinner").style.display = "none";
-          alert("Invalid credentials!");
-        }
-      }, 500);
+          alert(error.message);
+        });
     }
   </script>
 </body>

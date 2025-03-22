@@ -10,6 +10,11 @@ const port = 3000;
 const mongoUri = "mongodb+srv://scoreappuser:0908@cluster0.sutmk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin0908";
 
+// Rate limiting setup
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 10;
+const TIME_WINDOW = 60 * 60 * 1000;
+
 app.use(express.json());
 app.use(express.static("."));
 
@@ -58,6 +63,32 @@ cron.schedule("*/10 * * * *", () => {
     .then(() => console.log("Pinged to stay awake"))
     .catch(err => console.error("Ping failed:", err));
 });
+
+function rateLimitLogin(req, res, next) {
+  const ip = req.ip;
+  const username = req.body.username || "unknown"; // Get username from request body
+  const key = `${ip}:${username}`; // Unique key per IP + username
+  const now = Date.now();
+  const attemptData = loginAttempts.get(key) || { count: 0, firstAttemptTime: now };
+  
+  console.log(`Key: ${key}, Attempts: ${attemptData.count}, Time: ${new Date(attemptData.firstAttemptTime).toISOString()}`);
+  
+  if (now - attemptData.firstAttemptTime >= TIME_WINDOW) {
+    console.log(`Resetting attempts for ${key}`);
+    attemptData.count = 0;
+    attemptData.firstAttemptTime = now;
+  }
+  
+  if (attemptData.count >= MAX_ATTEMPTS) {
+    const timeLeft = Math.ceil((TIME_WINDOW - (now - attemptData.firstAttemptTime)) / (60 * 1000));
+    console.log(`Blocking ${key} - Too many attempts. Time left: ${timeLeft} mins`);
+    return res.status(429).send(`Too many login attempts for ${username}. Try again in ${timeLeft} minutes.`);
+  }
+  
+  req.attemptData = attemptData;
+  req.attemptKey = key; // Pass key to route handlers
+  next();
+}
 
 app.get("/ping", (req, res) => res.send("Alive!"));
 
@@ -142,12 +173,40 @@ app.get("/download-scores", async (req, res) => {
   res.end();
 });
 
-app.post("/admin-login", (req, res) => {
+app.post("/admin-login", rateLimitLogin, (req, res) => {
   const { username, password } = req.body;
+  const ip = req.ip;
+  
+  console.log(`Admin login attempt - IP: ${ip}, Username: ${username}, Attempt count: ${req.attemptData.count}`);
+  
   if (username === "admin" && password === ADMIN_PASSWORD) {
+    loginAttempts.delete(req.attemptKey);
+    console.log(`Admin login successful - IP: ${ip}, Attempts reset`);
     res.send("Admin login successful!");
   } else {
+    req.attemptData.count += 1;
+    loginAttempts.set(req.attemptKey, req.attemptData);
+    console.log(`Admin login failed - IP: ${ip}, New attempt count: ${req.attemptData.count}`);
     res.status(403).send("Invalid admin credentials!");
+  }
+});
+
+app.post("/teacher-login", rateLimitLogin, (req, res) => {
+  const { username, password } = req.body;
+  const ip = req.ip;
+  const validClass = username.match(/^(prenursery|nursery[1-2]|primary[1-5]|jss[1-3]|sss[1-3][ab]?)$/);
+  
+  console.log(`Teacher login attempt - IP: ${ip}, Username: ${username}, Attempt count: ${req.attemptData.count}`);
+  
+  if (validClass && password === `${username}123`) {
+    loginAttempts.delete(req.attemptKey);
+    console.log(`Teacher login successful - IP: ${ip}, Attempts reset`);
+    res.send("Teacher login successful!");
+  } else {
+    req.attemptData.count += 1;
+    loginAttempts.set(req.attemptKey, req.attemptData);
+    console.log(`Teacher login failed - IP: ${ip}, New attempt count: ${req.attemptData.count}`);
+    res.status(403).send("Invalid teacher credentials!");
   }
 });
 
