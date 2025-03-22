@@ -28,7 +28,7 @@ app.use(express.static("public"));
 
 let db;
 
-MongoClient.connect(mongoUri, { useUnifiedTopology: true })
+MongoClient.connect(mongoUri)
   .then(client => {
     db = client.db("scoreApp");
     console.log("Connected to MongoDB");
