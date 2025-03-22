@@ -196,7 +196,6 @@
     } else {
       localStorage.removeItem("adminLoggedIn");
       localStorage.removeItem("loginTime");
-      localStorage.removeItem("token");
       document.getElementById("admin-container").style.display = "block";
       document.getElementById("dashboard").style.display = "none";
       document.getElementById("header").style.display = "none";
@@ -227,7 +226,6 @@
             adminLoggedIn = true;
             localStorage.setItem("adminLoggedIn", "true");
             localStorage.setItem("loginTime", Date.now());
-            localStorage.setItem("token", data.token);
             showDashboard();
           } else {
             throw new Error(data.message || "Login failed");
@@ -244,25 +242,31 @@
     }
 
     function loadClasses() {
-      fetch("/get-classes", {
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-      })
-        .then(response => response.json())
+      fetch("/get-classes")
+        .then(response => {
+          if (!response.ok) throw new Error("Failed to fetch classes");
+          return response.json();
+        })
         .then(classes => {
           const classSelect = document.getElementById("classSelect");
           const downloadSelect = document.querySelector(".download-button");
           classSelect.innerHTML = '<option value="">Select Class</option>' + classes.map(cls => `<option value="${cls}">${cls}</option>`).join("");
           downloadSelect.innerHTML = '<option value="">Download Class Scores</option>' + classes.map(cls => `<option value="${cls}">${cls}</option>`).join("");
+        })
+        .catch(error => {
+          alert("Error: " + error.message);
+          logout();
         });
     }
 
     function loadRecords() {
       const className = document.getElementById("classSelect").value;
       if (!className) return;
-      fetch(`/get-scores?class=${className}`, {
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-      })
-        .then(response => response.json())
+      fetch(`/get-scores?class=${className}`)
+        .then(response => {
+          if (!response.ok) throw new Error("Failed to fetch records");
+          return response.json();
+        })
         .then(data => {
           const table = document.getElementById("recordsTable");
           const subjects = data.subjects.map(s => s.toUpperCase());
@@ -311,7 +315,6 @@
           const isSenior = className.startsWith("sss");
 
           students.forEach(student => {
-            const offeredSubjects = Object.keys(student.scores).length;
             const maxScore = isScienceClass ? 1000 : subjects.length * 100;
             student.grandAverage = `${((student.grandTotal / maxScore) * 100).toFixed(1)}%`;
           });
@@ -354,6 +357,10 @@
             row += `<td>${student.grandTotal}</td><td>${student.grandAverage}</td><td>${student.classPosition}</td></tr>`;
             table.innerHTML += row;
           });
+        })
+        .catch(error => {
+          alert("Error loading records: " + error.message);
+          logout();
         });
     }
 
@@ -398,11 +405,12 @@
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("token")}`
+            "x-csrf-token": document.cookie.match(/csrfToken=([^;]+)/)[1]
           },
           body: JSON.stringify({ class: className, serialNumbers: selected })
         })
-          .then(() => {
+          .then(response => {
+            if (!response.ok) throw new Error("Delete failed");
             document.getElementById("spinner").style.display = "none";
             loadRecords();
           })
@@ -415,9 +423,7 @@
 
     function downloadAllScores() {
       document.getElementById("spinner").style.display = "block";
-      fetch("/download-all-scores", {
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-      })
+      fetch("/download-all-scores")
         .then(response => {
           if (!response.ok) throw new Error("Download failed!");
           return response.blob();
@@ -442,9 +448,7 @@
     function downloadClassScores(className) {
       if (!className) return;
       document.getElementById("spinner").style.display = "block";
-      fetch(`/download-scores?class=${className}`, {
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-      })
+      fetch(`/download-scores?class=${className}`)
         .then(response => {
           if (!response.ok) throw new Error("Download failed!");
           return response.blob();
@@ -473,12 +477,15 @@
       adminLoggedIn = false;
       localStorage.removeItem("adminLoggedIn");
       localStorage.removeItem("loginTime");
-      localStorage.removeItem("token");
-      document.getElementById("dashboard").style.display = "none";
-      document.getElementById("header").style.display = "none";
-      document.getElementById("admin-container").style.display = "block";
-      document.getElementById("adminUsername").value = "";
-      document.getElementById("adminPassword").value = "";
+      fetch("/logout", { method: "POST" })
+        .then(() => {
+          document.getElementById("dashboard").style.display = "none";
+          document.getElementById("header").style.display = "none";
+          document.getElementById("admin-container").style.display = "block";
+          document.getElementById("adminUsername").value = "";
+          document.getElementById("adminPassword").value = "";
+        })
+        .catch(() => window.location.href = "/index.html");
     }
   </script>
 </body>

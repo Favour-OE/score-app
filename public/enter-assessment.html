@@ -137,13 +137,12 @@
   </div>
 
   <script>
-    const token = localStorage.getItem("token");
     const urlParams = new URLSearchParams(window.location.search);
     const className = urlParams.get("class") || localStorage.getItem("currentClass");
 
-    if (!token || !className) {
+    if (!className) {
       window.location.href = "/index.html";
-      throw new Error("No token or className");
+      throw new Error("No className");
     }
     document.getElementById("classInfo").textContent = `Logged in as: ${className.toUpperCase()}`;
 
@@ -156,9 +155,7 @@
     const econsSubjects = ["english language", "mathematics", "civic edu.", "biology", "economic", "chemistry", "physics", "french", "data processing", "geography"];
     const agricSubjects = ["english language", "mathematics", "civic edu.", "agric science", "biology", "chemistry", "physics", "french", "data processing", "geography"];
 
-    fetch(`/get-subjects?class=${className}`, {
-      headers: { "Authorization": `Bearer ${token}` }
-    })
+    fetch(`/get-subjects?class=${className}`)
       .then(response => {
         if (!response.ok) throw new Error("Failed to fetch subjects");
         return response.json();
@@ -198,16 +195,8 @@
         alert("Please enter student name and select a subject!");
         return;
       }
-      if (ca1 > 20) {
-        alert("Max score exceeded! 1st CA cannot exceed 20.");
-        return;
-      }
-      if (ca2 > 20) {
-        alert("Max score exceeded! 2nd CA cannot exceed 20.");
-        return;
-      }
-      if (exam > 60) {
-        alert("Max score exceeded! Exam cannot exceed 60.");
+      if (ca1 > 20 || ca2 > 20 || exam > 60) {
+        alert("Max score exceeded!");
         return;
       }
 
@@ -233,7 +222,7 @@
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "x-csrf-token": document.cookie.match(/csrfToken=([^;]+)/)[1]
         },
         body: JSON.stringify({ class: className, name: studentName, scores: tempRecords })
       })
@@ -304,7 +293,7 @@
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "x-csrf-token": document.cookie.match(/csrfToken=([^;]+)/)[1]
         },
         body: JSON.stringify({ class: className, name, scores })
       })

@@ -5,8 +5,9 @@ const MongoClient = require("mongodb").MongoClient;
 const cron = require("node-cron");
 const fetch = require("node-fetch");
 const archiver = require("archiver");
-const jwt = require("jsonwebtoken"); 
-const { body, query, validationResult } = require("express-validator"); // Added express-validator
+const jwt = require("jsonwebtoken");
+const { body, query, validationResult } = require("express-validator");
+const cookieParser = require("cookie-parser");
 
 const app = express();
 const port = 3000;
@@ -25,6 +26,7 @@ const TIME_WINDOW = 60 * 60 * 1000;
 
 app.use(express.json());
 app.use(express.static("public"));
+app.use(cookieParser());
 
 let db;
 
@@ -99,7 +101,7 @@ function rateLimitLogin(req, res, next) {
 }
 
 function verifyToken(req, res, next) {
-  const token = req.headers["authorization"]?.split(" ")[1];
+  const token = req.cookies.token;
   if (!token) return res.status(401).send("Access denied. No token provided.");
 
   try {
@@ -107,8 +109,19 @@ function verifyToken(req, res, next) {
     req.user = decoded;
     next();
   } catch (err) {
+    res.clearCookie("token");
+    res.clearCookie("csrfToken");
     res.status(403).send("Invalid token.");
   }
+}
+
+function verifyCsrfToken(req, res, next) {
+  const csrfToken = req.cookies.csrfToken;
+  const headerCsrf = req.headers["x-csrf-token"];
+  if (!csrfToken || csrfToken !== headerCsrf) {
+    return res.status(403).send("Invalid CSRF token.");
+  }
+  next();
 }
 
 app.get("/ping", (req, res) => res.send("Alive!"));
@@ -119,7 +132,7 @@ app.get("/view-records.html", verifyToken, (req, res) => res.sendFile(__dirname 
 app.get("/edit-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/edit-assessment.html"));
 app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/public/admin.html"));
 
-app.post("/submit-scores", verifyToken, [
+app.post("/submit-scores", verifyToken, verifyCsrfToken, [
   body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
   body("name").isString().notEmpty().withMessage("Student name is required"),
   body("scores").isArray({ min: 1 }).withMessage("Scores must be a non-empty array"),
@@ -153,7 +166,7 @@ app.post("/submit-scores", verifyToken, [
   res.send("Scores submitted");
 });
 
-app.post("/update-scores", verifyToken, [
+app.post("/update-scores", verifyToken, verifyCsrfToken, [
   body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
   body("serialNumber").isInt({ min: 1 }).withMessage("Serial number must be a positive integer"),
   body("scores").isArray({ min: 1 }).withMessage("Scores must be a non-empty array"),
@@ -256,7 +269,10 @@ app.post("/admin-login", rateLimitLogin, (req, res) => {
     loginAttempts.delete(req.attemptKey);
     console.log(`Admin login successful - IP: ${ip}, Attempts reset`);
     const token = jwt.sign({ username, role: "admin" }, JWT_SECRET, { expiresIn: "30m" });
-    res.json({ message: "Admin login successful!", token });
+    const csrfToken = jwt.sign({ id: Date.now() }, JWT_SECRET);
+    res.cookie("token", token, { httpOnly: true, secure: true, maxAge: 30 * 60 * 1000 });
+    res.cookie("csrfToken", csrfToken, { maxAge: 30 * 60 * 1000 });
+    res.json({ message: "Admin login successful!" });
   } else {
     req.attemptData.count += 1;
     loginAttempts.set(req.attemptKey, req.attemptData);
@@ -276,7 +292,10 @@ app.post("/teacher-login", rateLimitLogin, (req, res) => {
     loginAttempts.delete(req.attemptKey);
     console.log(`Teacher login successful - IP: ${ip}, Attempts reset`);
     const token = jwt.sign({ username, role: "teacher" }, JWT_SECRET, { expiresIn: "30m" });
-    res.json({ message: "Teacher login successful!", token });
+    const csrfToken = jwt.sign({ id: Date.now() }, JWT_SECRET);
+    res.cookie("token", token, { httpOnly: true, secure: true, maxAge: 30 * 60 * 1000 });
+    res.cookie("csrfToken", csrfToken, { maxAge: 30 * 60 * 1000 });
+    res.json({ message: "Teacher login successful!" });
   } else {
     req.attemptData.count += 1;
     loginAttempts.set(req.attemptKey, req.attemptData);
@@ -291,7 +310,7 @@ app.get("/get-classes", verifyToken, async (req, res) => {
   res.json(classes);
 });
 
-app.post("/delete-record", verifyToken, [
+app.post("/delete-record", verifyToken, verifyCsrfToken, [
   body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
   body("serialNumbers").isArray({ min: 1 }).withMessage("Serial numbers must be a non-empty array"),
   body("serialNumbers.*").isInt({ min: 1 }).withMessage("Each serial number must be a positive integer")
@@ -323,6 +342,12 @@ app.get("/download-all-scores", verifyToken, async (req, res) => {
   archive.finalize();
 });
 
+app.post("/logout", (req, res) => {
+  res.clearCookie("token");
+  res.clearCookie("csrfToken");
+  res.send("Logged out");
+});
+
 async function generateExcel(className) {
   const scoresData = await db.collection("scores").find({ class: className }).toArray();
   if (scoresData.length === 0) return null;
@@ -352,7 +377,6 @@ async function generateExcel(className) {
       student[`${sub} TOTAL`] = score.ca1 === 0 && score.ca2 === 0 && score.exam === 0 ? "-" : score.total;
       student["GRAND TOTAL"] += score.total;
     }
-    const offeredSubjects = Object.keys(student.scores).length;
     const maxScore = isScienceClass ? 1000 : subjects.length * 100;
     student["GRAND AVERAGE"] = `${((student["GRAND TOTAL"] / maxScore) * 100).toFixed(1)}%`;
   }

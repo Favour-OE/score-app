@@ -80,6 +80,8 @@
       transition: background 0.3s;
     }
     button:hover { background: #2DD4BF; }
+    .neutral-button { background: #9CA3AF; color: white; }
+    .neutral-button:hover { background: #6B7280; }
     @media (max-width: 600px) {
       #container { padding: 20px; max-width: 100%; }
       table { font-size: 14px; }
@@ -99,24 +101,20 @@
   </div>
 
   <script>
-    const token = localStorage.getItem("token");
     const urlParams = new URLSearchParams(window.location.search);
     const className = urlParams.get("class") || localStorage.getItem("currentClass");
 
-    if (!token || !className) {
+    if (!className) {
       window.location.href = "/index.html";
-      throw new Error("No token or className");
+      throw new Error("No className");
     }
     document.getElementById("classInfo").textContent = `Logged in as: ${className.toUpperCase()}`;
 
     Promise.all([
-      fetch(`/get-subjects?class=${className}`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      }).then(res => res.json()),
-      fetch(`/get-scores?class=${className}`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      }).then(res => res.json())
+      fetch(`/get-subjects?class=${className}`),
+      fetch(`/get-scores?class=${className}`)
     ])
+      .then(([subjectsRes, scoresRes]) => Promise.all([subjectsRes.json(), scoresRes.json()]))
       .then(([subjects, data]) => {
         const table = document.getElementById("recordsTable");
         const upperSubjects = subjects.map(s => s.toUpperCase());
@@ -165,7 +163,6 @@
         const isSenior = className.startsWith("sss");
 
         students.forEach(student => {
-          const offeredSubjects = Object.keys(student.scores).length;
           const maxScore = isScienceClass ? 1000 : subjects.length * 100;
           student.grandAverage = `${((student.grandTotal / maxScore) * 100).toFixed(1)}%`;
         });

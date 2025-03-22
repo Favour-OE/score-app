@@ -130,6 +130,7 @@
 
   <script>
     const TIMEOUT_MINUTES = 30;
+
     function checkTimeout() {
       const loginTime = localStorage.getItem("loginTime");
       if (loginTime) {
@@ -137,7 +138,6 @@
         if (timeDiff > TIMEOUT_MINUTES) {
           localStorage.removeItem("currentClass");
           localStorage.removeItem("loginTime");
-          localStorage.removeItem("token");
         }
       }
     }
@@ -169,7 +169,6 @@
           if (response.ok) {
             localStorage.setItem("currentClass", username);
             localStorage.setItem("loginTime", Date.now());
-            localStorage.setItem("token", data.token);
             window.location.href = `/dashboard.html?class=${username}`;
           } else {
             throw new Error(data.message || "Login failed");
