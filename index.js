@@ -8,6 +8,8 @@ const archiver = require("archiver");
 const jwt = require("jsonwebtoken");
 const { body, query, validationResult } = require("express-validator");
 const cookieParser = require("cookie-parser");
+const sanitizeHtml = require("sanitize-html"); // Added for XSS sanitization
+const winston = require("winston"); // Added for secure logging
 
 const app = express();
 const port = 3000;
@@ -20,9 +22,22 @@ if (!mongoUri || !ADMIN_PASSWORD || !JWT_SECRET) {
   process.exit(1);
 }
 
+// Secure logging setup
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message }) => `${timestamp} ${level}: ${message}`)
+  ),
+  transports: [
+    new winston.transports.File({ filename: "app.log" }) // Logs to file, not console
+  ]
+});
+
+// Rate limiting per IP only (not per username)
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 10;
-const TIME_WINDOW = 60 * 60 * 1000;
+const TIME_WINDOW = 60 * 60 * 1000; // 1 hour
 
 app.use(express.json());
 app.use(express.static("public"));
@@ -30,13 +45,20 @@ app.use(cookieParser());
 
 let db;
 
-MongoClient.connect(mongoUri)
-  .then(client => {
-    db = client.db("scoreApp");
-    console.log("Connected to MongoDB");
-    seedSubjects();
-  })
-  .catch(error => console.error("MongoDB connection error:", error));
+// MongoDB with retry logic
+const connectWithRetry = () => {
+  MongoClient.connect(mongoUri, { useUnifiedTopology: true })
+    .then(client => {
+      db = client.db("scoreApp");
+      logger.info("Connected to MongoDB");
+      seedSubjects();
+    })
+    .catch(error => {
+      logger.error("MongoDB connection error:", error.message);
+      setTimeout(connectWithRetry, 5000); // Retry after 5 seconds
+    });
+};
+connectWithRetry();
 
 const classSubjects = {
   "prenursery": ["maths", "english", "elementary science", "social habits", "health habit", "crk", "writing", "creative art", "craft"],
@@ -65,38 +87,33 @@ async function seedSubjects() {
       { upsert: true }
     );
   }
-  console.log("Subjects seeded for all classes");
+  logger.info("Subjects seeded for all classes");
 }
 
 cron.schedule("*/10 * * * *", () => {
   fetch("https://my-score-app.onrender.com/ping")
-    .then(() => console.log("Pinged to stay awake"))
-    .catch(err => console.error("Ping failed:", err));
+    .then(() => logger.info("Pinged to stay awake"))
+    .catch(err => logger.error("Ping failed:", err.message));
 });
 
 function rateLimitLogin(req, res, next) {
   const ip = req.ip;
-  const username = req.body.username || "unknown";
-  const key = `${ip}:${username}`;
   const now = Date.now();
-  const attemptData = loginAttempts.get(key) || { count: 0, firstAttemptTime: now };
-  
-  console.log(`Key: ${key}, Attempts: ${attemptData.count}, Time: ${new Date(attemptData.firstAttemptTime).toISOString()}`);
-  
+  const attemptData = loginAttempts.get(ip) || { count: 0, firstAttemptTime: now };
+
   if (now - attemptData.firstAttemptTime >= TIME_WINDOW) {
-    console.log(`Resetting attempts for ${key}`);
     attemptData.count = 0;
     attemptData.firstAttemptTime = now;
   }
-  
+
   if (attemptData.count >= MAX_ATTEMPTS) {
     const timeLeft = Math.ceil((TIME_WINDOW - (now - attemptData.firstAttemptTime)) / (60 * 1000));
-    console.log(`Blocking ${key} - Too many attempts. Time left: ${timeLeft} mins`);
-    return res.status(429).send(`Too many login attempts for ${username}. Try again in ${timeLeft} minutes.`);
+    logger.warn(`Blocking IP ${ip} - Too many attempts. Time left: ${timeLeft} mins`);
+    return res.status(429).send(`Too many login attempts from this IP. Try again in ${timeLeft} minutes.`);
   }
-  
+
   req.attemptData = attemptData;
-  req.attemptKey = key;
+  req.attemptKey = ip;
   next();
 }
 
@@ -134,9 +151,9 @@ app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/public/admin.htm
 
 app.post("/submit-scores", verifyToken, verifyCsrfToken, [
   body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
-  body("name").isString().notEmpty().withMessage("Student name is required"),
+  body("name").isString().notEmpty().customSanitizer(value => sanitizeHtml(value)).withMessage("Student name is required"),
   body("scores").isArray({ min: 1 }).withMessage("Scores must be a non-empty array"),
-  body("scores.*.subject").isString().notEmpty().withMessage("Subject is required for each score"),
+  body("scores.*.subject").isString().notEmpty().customSanitizer(value => sanitizeHtml(value)).withMessage("Subject is required for each score"),
   body("scores.*.ca1").isFloat({ min: 0, max: 20 }).withMessage("CA1 must be a number between 0 and 20"),
   body("scores.*.ca2").isFloat({ min: 0, max: 20 }).withMessage("CA2 must be a number between 0 and 20"),
   body("scores.*.exam").isFloat({ min: 0, max: 60 }).withMessage("Exam must be a number between 0 and 60")
@@ -146,6 +163,7 @@ app.post("/submit-scores", verifyToken, verifyCsrfToken, [
 
   const { class: className, name, scores } = req.body;
   if (req.user.role === "teacher" && req.user.username !== className) {
+    logger.warn(`Unauthorized score submission attempt by ${req.user.username} for ${className}`);
     return res.status(403).send("Unauthorized: You can only submit scores for your class.");
   }
   const maxSerial = await db.collection("scores").find({ class: className }).sort({ serialNumber: -1 }).limit(1).toArray();
@@ -170,7 +188,7 @@ app.post("/update-scores", verifyToken, verifyCsrfToken, [
   body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
   body("serialNumber").isInt({ min: 1 }).withMessage("Serial number must be a positive integer"),
   body("scores").isArray({ min: 1 }).withMessage("Scores must be a non-empty array"),
-  body("scores.*.subject").isString().notEmpty().withMessage("Subject is required for each score"),
+  body("scores.*.subject").isString().notEmpty().customSanitizer(value => sanitizeHtml(value)).withMessage("Subject is required for each score"),
   body("scores.*.ca1").isFloat({ min: 0, max: 20 }).withMessage("CA1 must be a number between 0 and 20"),
   body("scores.*.ca2").isFloat({ min: 0, max: 20 }).withMessage("CA2 must be a number between 0 and 20"),
   body("scores.*.exam").isFloat({ min: 0, max: 60 }).withMessage("Exam must be a number between 0 and 60")
@@ -180,6 +198,7 @@ app.post("/update-scores", verifyToken, verifyCsrfToken, [
 
   const { class: className, serialNumber, scores } = req.body;
   if (req.user.role === "teacher" && req.user.username !== className) {
+    logger.warn(`Unauthorized score update attempt by ${req.user.username} for ${className}`);
     return res.status(403).send("Unauthorized: You can only update scores for your class.");
   }
   for (let score of scores) {
@@ -200,6 +219,7 @@ app.get("/get-scores", verifyToken, [
 
   const className = req.query.class;
   if (req.user.role === "teacher" && req.user.username !== className) {
+    logger.warn(`Unauthorized score view attempt by ${req.user.username} for ${className}`);
     return res.status(403).send("Unauthorized: You can only view scores for your class.");
   }
   const rawScores = await db.collection("scores").find({ class: className }).toArray();
@@ -236,6 +256,7 @@ app.get("/get-subjects", verifyToken, [
 
   const className = req.query.class;
   if (req.user.role === "teacher" && req.user.username !== className) {
+    logger.warn(`Unauthorized subjects view attempt by ${req.user.username} for ${className}`);
     return res.status(403).send("Unauthorized: You can only view subjects for your class.");
   }
   const subjects = await db.collection("subjects").findOne({ class: className });
@@ -250,9 +271,12 @@ app.get("/download-scores", verifyToken, [
 
   const className = req.query.class;
   if (req.user.role === "teacher" && req.user.username !== className) {
+    logger.warn(`Unauthorized download attempt by ${req.user.username} for ${className}`);
     return res.status(403).send("Unauthorized: You can only download scores for your class.");
   }
-  const workbook = await generateExcel(className);
+  const scoresData = await db.collection("scores").find({ class: className }).limit(10000).toArray(); // Added limit
+  if (scoresData.length === 0) return res.status(404).send("No scores found.");
+  const workbook = await generateExcel(className, scoresData);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename=${className}_scores.xlsx`);
   await workbook.xlsx.write(res);
@@ -262,21 +286,19 @@ app.get("/download-scores", verifyToken, [
 app.post("/admin-login", rateLimitLogin, (req, res) => {
   const { username, password } = req.body;
   const ip = req.ip;
-  
-  console.log(`Admin login attempt - IP: ${ip}, Username: ${username}, Attempt count: ${req.attemptData.count}`);
-  
+
   if (username === "admin" && password === ADMIN_PASSWORD) {
     loginAttempts.delete(req.attemptKey);
-    console.log(`Admin login successful - IP: ${ip}, Attempts reset`);
+    logger.info(`Admin login successful from IP ${ip}`);
     const token = jwt.sign({ username, role: "admin" }, JWT_SECRET, { expiresIn: "30m" });
     const csrfToken = jwt.sign({ id: Date.now() }, JWT_SECRET);
-    res.cookie("token", token, { httpOnly: true, secure: true, maxAge: 30 * 60 * 1000 });
-    res.cookie("csrfToken", csrfToken, { maxAge: 30 * 60 * 1000 });
+    res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: 30 * 60 * 1000 });
+    res.cookie("csrfToken", csrfToken, { secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: 30 * 60 * 1000 });
     res.json({ message: "Admin login successful!" });
   } else {
     req.attemptData.count += 1;
     loginAttempts.set(req.attemptKey, req.attemptData);
-    console.log(`Admin login failed - IP: ${ip}, New attempt count: ${req.attemptData.count}`);
+    logger.warn(`Admin login failed from IP ${ip} - Attempt ${req.attemptData.count}`);
     res.status(403).send("Invalid admin credentials!");
   }
 });
@@ -285,27 +307,28 @@ app.post("/teacher-login", rateLimitLogin, (req, res) => {
   const { username, password } = req.body;
   const ip = req.ip;
   const validClass = username.match(/^(prenursery|nursery[1-2]|primary[1-5]|jss[1-3]|sss[1-3][ab]?)$/);
-  
-  console.log(`Teacher login attempt - IP: ${ip}, Username: ${username}, Attempt count: ${req.attemptData.count}`);
-  
+
   if (validClass && password === `${username}123`) {
     loginAttempts.delete(req.attemptKey);
-    console.log(`Teacher login successful - IP: ${ip}, Attempts reset`);
+    logger.info(`Teacher login successful for ${username} from IP ${ip}`);
     const token = jwt.sign({ username, role: "teacher" }, JWT_SECRET, { expiresIn: "30m" });
     const csrfToken = jwt.sign({ id: Date.now() }, JWT_SECRET);
-    res.cookie("token", token, { httpOnly: true, secure: true, maxAge: 30 * 60 * 1000 });
-    res.cookie("csrfToken", csrfToken, { maxAge: 30 * 60 * 1000 });
+    res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: 30 * 60 * 1000 });
+    res.cookie("csrfToken", csrfToken, { secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: 30 * 60 * 1000 });
     res.json({ message: "Teacher login successful!" });
   } else {
     req.attemptData.count += 1;
     loginAttempts.set(req.attemptKey, req.attemptData);
-    console.log(`Teacher login failed - IP: ${ip}, New attempt count: ${req.attemptData.count}`);
+    logger.warn(`Teacher login failed for ${username} from IP ${ip} - Attempt ${req.attemptData.count}`);
     res.status(403).send("Invalid teacher credentials!");
   }
 });
 
 app.get("/get-classes", verifyToken, async (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).send("Unauthorized: Admin only.");
+  if (req.user.role !== "admin") {
+    logger.warn(`Unauthorized classes view attempt by ${req.user.username}`);
+    return res.status(403).send("Unauthorized: Admin only.");
+  }
   const classes = await db.collection("subjects").distinct("class");
   res.json(classes);
 });
@@ -318,7 +341,10 @@ app.post("/delete-record", verifyToken, verifyCsrfToken, [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-  if (req.user.role !== "admin") return res.status(403).send("Unauthorized: Admin only.");
+  if (req.user.role !== "admin") {
+    logger.warn(`Unauthorized delete attempt by ${req.user.username}`);
+    return res.status(403).send("Unauthorized: Admin only.");
+  }
   const { class: className, serialNumbers } = req.body;
   await db.collection("scores").deleteMany({ class: className, serialNumber: { $in: serialNumbers.map(Number) } });
   await db.collection("logs").insertOne({ timestamp: new Date().toISOString(), action: `Deleted records S/N ${serialNumbers.join(", ")} for ${className}` });
@@ -326,7 +352,10 @@ app.post("/delete-record", verifyToken, verifyCsrfToken, [
 });
 
 app.get("/download-all-scores", verifyToken, async (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).send("Unauthorized: Admin only.");
+  if (req.user.role !== "admin") {
+    logger.warn(`Unauthorized all-scores download attempt by ${req.user.username}`);
+    return res.status(403).send("Unauthorized: Admin only.");
+  }
   const classes = await db.collection("subjects").distinct("class");
   const archive = archiver("zip", { zlib: { level: 9 } });
   res.setHeader("Content-Type", "application/zip");
@@ -334,9 +363,12 @@ app.get("/download-all-scores", verifyToken, async (req, res) => {
   archive.pipe(res);
 
   for (const className of classes) {
-    const workbook = await generateExcel(className);
-    const buffer = await workbook.xlsx.writeBuffer();
-    archive.append(buffer, { name: `${className}_scores.xlsx` });
+    const scoresData = await db.collection("scores").find({ class: className }).limit(10000).toArray(); // Added limit
+    if (scoresData.length > 0) {
+      const workbook = await generateExcel(className, scoresData);
+      const buffer = await workbook.xlsx.writeBuffer();
+      archive.append(buffer, { name: `${className}_scores.xlsx` });
+    }
   }
 
   archive.finalize();
@@ -348,9 +380,8 @@ app.post("/logout", (req, res) => {
   res.send("Logged out");
 });
 
-async function generateExcel(className) {
-  const scoresData = await db.collection("scores").find({ class: className }).toArray();
-  if (scoresData.length === 0) return null;
+async function generateExcel(className, scoresData) {
+  if (!scoresData || scoresData.length === 0) return null;
   const subjects = (await db.collection("subjects").findOne({ class: className }))?.subjects.map(s => s.toUpperCase()) || [];
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Scores");
@@ -415,5 +446,5 @@ function getOrdinal(n) {
 }
 
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  logger.info(`Server running at http://localhost:${port}`);
 });
