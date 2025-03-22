@@ -77,9 +77,15 @@
 
   <script>
     const TIMEOUT_MINUTES = 30;
+    const token = localStorage.getItem("token");
     const urlParams = new URLSearchParams(window.location.search);
     const className = urlParams.get("class") || localStorage.getItem("currentClass");
-    if (!className) window.location.href = "/index.html";
+
+    // Check token and className
+    if (!token || !className) {
+      window.location.href = "/index.html";
+      throw new Error("No token or className");
+    }
     localStorage.setItem("currentClass", className);
     document.getElementById("classInfo").textContent = `Logged in as: ${className.toUpperCase()}`;
 
@@ -109,6 +115,7 @@
     function logout() {
       localStorage.removeItem("currentClass");
       localStorage.removeItem("loginTime");
+      localStorage.removeItem("token");
       window.location.href = "/index.html";
     }
   </script>

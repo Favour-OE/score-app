@@ -4,19 +4,26 @@ const MongoClient = require("mongodb").MongoClient;
 const cron = require("node-cron");
 const fetch = require("node-fetch");
 const archiver = require("archiver");
+const jwt = require("jsonwebtoken"); 
 
 const app = express();
 const port = 3000;
 const mongoUri = "mongodb+srv://scoreappuser:0908@cluster0.sutmk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin0908";
+const JWT_SECRET = process.env.JWT_SECRET; // Removed fallback
 
-// Rate limiting setup
+// Check if JWT_SECRET is set
+if (!JWT_SECRET) {
+  console.error("JWT_SECRET is not set in environment variables");
+  process.exit(1);
+}
+
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 10;
 const TIME_WINDOW = 60 * 60 * 1000;
 
 app.use(express.json());
-app.use(express.static("."));
+app.use(express.static(".")); // We'll remove this later
 
 let db;
 
@@ -66,8 +73,8 @@ cron.schedule("*/10 * * * *", () => {
 
 function rateLimitLogin(req, res, next) {
   const ip = req.ip;
-  const username = req.body.username || "unknown"; // Get username from request body
-  const key = `${ip}:${username}`; // Unique key per IP + username
+  const username = req.body.username || "unknown";
+  const key = `${ip}:${username}`;
   const now = Date.now();
   const attemptData = loginAttempts.get(key) || { count: 0, firstAttemptTime: now };
   
@@ -86,20 +93,38 @@ function rateLimitLogin(req, res, next) {
   }
   
   req.attemptData = attemptData;
-  req.attemptKey = key; // Pass key to route handlers
+  req.attemptKey = key;
   next();
+}
+
+// Token verification middleware
+function verifyToken(req, res, next) {
+  const token = req.headers["authorization"]?.split(" ")[1]; // Expect "Bearer <token>"
+  if (!token) return res.status(401).send("Access denied. No token provided.");
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; // { username, role }
+    next();
+  } catch (err) {
+    res.status(403).send("Invalid token.");
+  }
 }
 
 app.get("/ping", (req, res) => res.send("Alive!"));
 
-app.get("/dashboard.html", (req, res) => res.sendFile(__dirname + "/dashboard.html"));
-app.get("/enter-assessment.html", (req, res) => res.sendFile(__dirname + "/enter-assessment.html"));
-app.get("/view-records.html", (req, res) => res.sendFile(__dirname + "/view-records.html"));
-app.get("/edit-assessment.html", (req, res) => res.sendFile(__dirname + "/edit-assessment.html"));
-app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/admin.html"));
+// Protected routes for static pages
+app.get("/dashboard.html", verifyToken, (req, res) => res.sendFile(__dirname + "/dashboard.html"));
+app.get("/enter-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/enter-assessment.html"));
+app.get("/view-records.html", verifyToken, (req, res) => res.sendFile(__dirname + "/view-records.html"));
+app.get("/edit-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/edit-assessment.html"));
+app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/admin.html")); // Admin login page stays public
 
-app.post("/submit-scores", async (req, res) => {
+app.post("/submit-scores", verifyToken, async (req, res) => {
   const { class: className, name, scores } = req.body;
+  if (req.user.role === "teacher" && req.user.username !== className) {
+    return res.status(403).send("Unauthorized: You can only submit scores for your class.");
+  }
   const maxSerial = await db.collection("scores").find({ class: className }).sort({ serialNumber: -1 }).limit(1).toArray();
   const newSerial = maxSerial.length > 0 ? maxSerial[0].serialNumber + 1 : 1;
 
@@ -118,8 +143,11 @@ app.post("/submit-scores", async (req, res) => {
   res.send("Scores submitted");
 });
 
-app.post("/update-scores", async (req, res) => {
+app.post("/update-scores", verifyToken, async (req, res) => {
   const { class: className, serialNumber, scores } = req.body;
+  if (req.user.role === "teacher" && req.user.username !== className) {
+    return res.status(403).send("Unauthorized: You can only update scores for your class.");
+  }
   for (let score of scores) {
     await db.collection("scores").updateOne(
       { class: className, serialNumber: parseInt(serialNumber), subject: score.subject },
@@ -130,8 +158,11 @@ app.post("/update-scores", async (req, res) => {
   res.send("Scores updated");
 });
 
-app.get("/get-scores", async (req, res) => {
+app.get("/get-scores", verifyToken, async (req, res) => {
   const className = req.query.class;
+  if (req.user.role === "teacher" && req.user.username !== className) {
+    return res.status(403).send("Unauthorized: You can only view scores for your class.");
+  }
   const rawScores = await db.collection("scores").find({ class: className }).toArray();
   const subjects = (await db.collection("subjects").findOne({ class: className }))?.subjects || [];
   
@@ -158,14 +189,20 @@ function getGrade(total, isSenior) {
   }
 }
 
-app.get("/get-subjects", async (req, res) => {
+app.get("/get-subjects", verifyToken, async (req, res) => {
   const className = req.query.class;
+  if (req.user.role === "teacher" && req.user.username !== className) {
+    return res.status(403).send("Unauthorized: You can only view subjects for your class.");
+  }
   const subjects = await db.collection("subjects").findOne({ class: className });
   res.json(subjects ? subjects.subjects : []);
 });
 
-app.get("/download-scores", async (req, res) => {
+app.get("/download-scores", verifyToken, async (req, res) => {
   const className = req.query.class;
+  if (req.user.role === "teacher" && req.user.username !== className) {
+    return res.status(403).send("Unauthorized: You can only download scores for your class.");
+  }
   const workbook = await generateExcel(className);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename=${className}_scores.xlsx`);
@@ -182,7 +219,8 @@ app.post("/admin-login", rateLimitLogin, (req, res) => {
   if (username === "admin" && password === ADMIN_PASSWORD) {
     loginAttempts.delete(req.attemptKey);
     console.log(`Admin login successful - IP: ${ip}, Attempts reset`);
-    res.send("Admin login successful!");
+    const token = jwt.sign({ username, role: "admin" }, JWT_SECRET, { expiresIn: "30m" });
+    res.json({ message: "Admin login successful!", token });
   } else {
     req.attemptData.count += 1;
     loginAttempts.set(req.attemptKey, req.attemptData);
@@ -201,7 +239,8 @@ app.post("/teacher-login", rateLimitLogin, (req, res) => {
   if (validClass && password === `${username}123`) {
     loginAttempts.delete(req.attemptKey);
     console.log(`Teacher login successful - IP: ${ip}, Attempts reset`);
-    res.send("Teacher login successful!");
+    const token = jwt.sign({ username, role: "teacher" }, JWT_SECRET, { expiresIn: "30m" });
+    res.json({ message: "Teacher login successful!", token });
   } else {
     req.attemptData.count += 1;
     loginAttempts.set(req.attemptKey, req.attemptData);
@@ -210,19 +249,22 @@ app.post("/teacher-login", rateLimitLogin, (req, res) => {
   }
 });
 
-app.get("/get-classes", async (req, res) => {
+app.get("/get-classes", verifyToken, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).send("Unauthorized: Admin only.");
   const classes = await db.collection("subjects").distinct("class");
   res.json(classes);
 });
 
-app.post("/delete-record", async (req, res) => {
+app.post("/delete-record", verifyToken, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).send("Unauthorized: Admin only.");
   const { class: className, serialNumbers } = req.body;
   await db.collection("scores").deleteMany({ class: className, serialNumber: { $in: serialNumbers.map(Number) } });
   await db.collection("logs").insertOne({ timestamp: new Date().toISOString(), action: `Deleted records S/N ${serialNumbers.join(", ")} for ${className}` });
   res.send("Records deleted");
 });
 
-app.get("/download-all-scores", async (req, res) => {
+app.get("/download-all-scores", verifyToken, async (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).send("Unauthorized: Admin only.");
   const classes = await db.collection("subjects").distinct("class");
   const archive = archiver("zip", { zlib: { level: 9 } });
   res.setHeader("Content-Type", "application/zip");

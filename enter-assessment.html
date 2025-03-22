@@ -137,9 +137,14 @@
   </div>
 
   <script>
+    const token = localStorage.getItem("token");
     const urlParams = new URLSearchParams(window.location.search);
     const className = urlParams.get("class") || localStorage.getItem("currentClass");
-    if (!className) window.location.href = "/index.html";
+
+    if (!token || !className) {
+      window.location.href = "/index.html";
+      throw new Error("No token or className");
+    }
     document.getElementById("classInfo").textContent = `Logged in as: ${className.toUpperCase()}`;
 
     const isScienceClass = className === "sss2b" || className === "sss3b";
@@ -151,8 +156,13 @@
     const econsSubjects = ["english language", "mathematics", "civic edu.", "biology", "economic", "chemistry", "physics", "french", "data processing", "geography"];
     const agricSubjects = ["english language", "mathematics", "civic edu.", "agric science", "biology", "chemistry", "physics", "french", "data processing", "geography"];
 
-    fetch(`/get-subjects?class=${className}`)
-      .then(response => response.json())
+    fetch(`/get-subjects?class=${className}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(response => {
+        if (!response.ok) throw new Error("Failed to fetch subjects");
+        return response.json();
+      })
       .then(data => {
         subjects = data;
         if (isScienceClass) {
@@ -161,9 +171,12 @@
           const subjectSelect = document.getElementById("subjectSelect");
           subjectSelect.innerHTML = subjects.map(sub => `<option value="${sub}">${sub.toUpperCase()}</option>`).join("");
         }
+      })
+      .catch(error => {
+        alert("Error: " + error.message);
+        window.location.href = "/index.html";
       });
 
-    // Real-time score validation
     function validateScore(input, max) {
       const value = parseFloat(input.value) || 0;
       const errorSpan = document.getElementById(`${input.id}-error`) || input.nextElementSibling;
@@ -174,7 +187,6 @@
       }
     }
 
-    // Old UI Functions
     function saveRecord() {
       const studentName = document.getElementById("studentNameOld").value;
       const subject = document.getElementById("subjectSelect").value;
@@ -219,10 +231,16 @@
       const studentName = document.getElementById("studentNameOld").value;
       fetch("/submit-scores", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ class: className, name: studentName, scores: tempRecords })
       })
-        .then(response => response.text())
+        .then(response => {
+          if (!response.ok) throw new Error("Submit failed");
+          return response.text();
+        })
         .then(() => {
           alert("Upload successful!");
           tempRecords = [];
@@ -235,7 +253,6 @@
         .catch(error => alert("Submit error: " + error.message));
     }
 
-    // New UI Functions
     function updateSubjects() {
       const group = document.getElementById("subjectGroup").value;
       if (group === "econs") {
@@ -285,10 +302,16 @@
 
       fetch("/submit-scores", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ class: className, name, scores })
       })
-        .then(response => response.text())
+        .then(response => {
+          if (!response.ok) throw new Error("Submit failed");
+          return response.text();
+        })
         .then(() => {
           alert("Scores submitted successfully!");
           document.getElementById("studentNameNew").value = "";

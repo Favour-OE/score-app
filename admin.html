@@ -196,6 +196,7 @@
     } else {
       localStorage.removeItem("adminLoggedIn");
       localStorage.removeItem("loginTime");
+      localStorage.removeItem("token");
       document.getElementById("admin-container").style.display = "block";
       document.getElementById("dashboard").style.display = "none";
       document.getElementById("header").style.display = "none";
@@ -221,14 +222,15 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password })
       })
-        .then(response => response.text().then(text => {
+        .then(response => response.json().then(data => {
           if (response.ok) {
             adminLoggedIn = true;
             localStorage.setItem("adminLoggedIn", "true");
             localStorage.setItem("loginTime", Date.now());
+            localStorage.setItem("token", data.token);
             showDashboard();
           } else {
-            throw new Error(text);
+            throw new Error(data.message || "Login failed");
           }
         }))
         .catch(error => alert(error.message));
@@ -242,7 +244,9 @@
     }
 
     function loadClasses() {
-      fetch("/get-classes")
+      fetch("/get-classes", {
+        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      })
         .then(response => response.json())
         .then(classes => {
           const classSelect = document.getElementById("classSelect");
@@ -255,7 +259,9 @@
     function loadRecords() {
       const className = document.getElementById("classSelect").value;
       if (!className) return;
-      fetch(`/get-scores?class=${className}`)
+      fetch(`/get-scores?class=${className}`, {
+        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      })
         .then(response => response.json())
         .then(data => {
           const table = document.getElementById("recordsTable");
@@ -390,7 +396,10 @@
         document.getElementById("spinner").style.display = "block";
         fetch("/delete-record", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+          },
           body: JSON.stringify({ class: className, serialNumbers: selected })
         })
           .then(() => {
@@ -406,7 +415,9 @@
 
     function downloadAllScores() {
       document.getElementById("spinner").style.display = "block";
-      fetch("/download-all-scores")
+      fetch("/download-all-scores", {
+        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      })
         .then(response => {
           if (!response.ok) throw new Error("Download failed!");
           return response.blob();
@@ -431,7 +442,9 @@
     function downloadClassScores(className) {
       if (!className) return;
       document.getElementById("spinner").style.display = "block";
-      fetch(`/download-scores?class=${className}`)
+      fetch(`/download-scores?class=${className}`, {
+        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      })
         .then(response => {
           if (!response.ok) throw new Error("Download failed!");
           return response.blob();
@@ -460,6 +473,7 @@
       adminLoggedIn = false;
       localStorage.removeItem("adminLoggedIn");
       localStorage.removeItem("loginTime");
+      localStorage.removeItem("token");
       document.getElementById("dashboard").style.display = "none";
       document.getElementById("header").style.display = "none";
       document.getElementById("admin-container").style.display = "block";

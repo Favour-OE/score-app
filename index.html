@@ -137,6 +137,7 @@
         if (timeDiff > TIMEOUT_MINUTES) {
           localStorage.removeItem("currentClass");
           localStorage.removeItem("loginTime");
+          localStorage.removeItem("token");
         }
       }
     }
@@ -163,14 +164,15 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password })
       })
-        .then(response => response.text().then(text => {
+        .then(response => response.json().then(data => {
           document.getElementById("spinner").style.display = "none";
           if (response.ok) {
             localStorage.setItem("currentClass", username);
             localStorage.setItem("loginTime", Date.now());
+            localStorage.setItem("token", data.token);
             window.location.href = `/dashboard.html?class=${username}`;
           } else {
-            throw new Error(text);
+            throw new Error(data.message || "Login failed");
           }
         }))
         .catch(error => {

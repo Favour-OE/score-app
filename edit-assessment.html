@@ -133,11 +133,16 @@
   </div>
 
   <script>
+    const token = localStorage.getItem("token");
     const urlParams = new URLSearchParams(window.location.search);
     const className = urlParams.get("class") || localStorage.getItem("currentClass");
     const serialNumber = urlParams.get("serial");
     const initialSubject = urlParams.get("subject");
-    if (!className || !serialNumber) window.location.href = "/index.html";
+
+    if (!token || !className || !serialNumber) {
+      window.location.href = "/index.html";
+      throw new Error("No token, className, or serialNumber");
+    }
     document.getElementById("classInfo").textContent = `Logged in as: ${className.toUpperCase()}`;
 
     const isScienceClass = className === "sss2b" || className === "sss3b";
@@ -149,8 +154,12 @@
     let tempRecords = [];
 
     Promise.all([
-      fetch(`/get-subjects?class=${className}`).then(res => res.json()),
-      fetch(`/get-scores?class=${className}`).then(res => res.json())
+      fetch(`/get-subjects?class=${className}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      }).then(res => res.json()),
+      fetch(`/get-scores?class=${className}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      }).then(res => res.json())
     ])
       .then(([subjectList, scoreData]) => {
         subjects = subjectList;
@@ -164,9 +173,12 @@
         } else {
           loadOldUI(studentRecords);
         }
+      })
+      .catch(error => {
+        alert("Error loading data: " + error.message);
+        window.location.href = "/index.html";
       });
 
-    // Real-time score validation
     function validateScore(input, max) {
       const value = parseFloat(input.value) || 0;
       const errorSpan = document.getElementById(`${input.id}-error`) || input.nextElementSibling;
@@ -177,7 +189,6 @@
       }
     }
 
-    // Old UI Functions (Non-sss2b/sss3b)
     function loadOldUI(records) {
       const studentName = records.length > 0 ? records[0].studentName : "";
       document.getElementById("studentNameOld").value = studentName;
@@ -224,7 +235,7 @@
         return;
       }
 
-      tempRecords = tempRecords.filter(r => r.subject !== subject); // Replace if exists
+      tempRecords = tempRecords.filter(r => r.subject !== subject);
       tempRecords.push({ subject, ca1, ca2, exam });
       alert(`Saved ${subject} scores locally!`);
     }
@@ -236,14 +247,22 @@
       }
       fetch("/update-scores", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ class: className, serialNumber: parseInt(serialNumber), scores: tempRecords })
       })
-        .then(response => response.text())
+        .then(response => {
+          if (!response.ok) throw new Error("Update failed");
+          return response.text();
+        })
         .then(() => {
           alert("Records updated successfully!");
           tempRecords = [];
-          fetch(`/get-scores?class=${className}`)
+          fetch(`/get-scores?class=${className}`, {
+            headers: { "Authorization": `Bearer ${token}` }
+          })
             .then(res => res.json())
             .then(data => {
               const studentRecords = data.records.filter(r => r.serialNumber === parseInt(serialNumber));
@@ -257,7 +276,6 @@
         .catch(error => alert("Update error: " + error.message));
     }
 
-    // New UI Functions (sss2b/sss3b)
     function loadScienceUI(records) {
       const studentName = records.length > 0 ? records[0].studentName : "";
       document.getElementById("studentNameNew").value = studentName;
@@ -297,10 +315,16 @@
 
       fetch("/update-scores", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ class: className, serialNumber: parseInt(serialNumber), scores })
       })
-        .then(response => response.text())
+        .then(response => {
+          if (!response.ok) throw new Error("Update failed");
+          return response.text();
+        })
         .then(() => {
           alert("Scores updated successfully!");
           window.location.reload();
