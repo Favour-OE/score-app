@@ -6,14 +6,14 @@ const cron = require("node-cron");
 const fetch = require("node-fetch");
 const archiver = require("archiver");
 const jwt = require("jsonwebtoken"); 
+const { body, query, validationResult } = require("express-validator"); // Added express-validator
 
 const app = express();
 const port = 3000;
-const mongoUri = process.env.MONGO_URI; // Changed to env variable
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; // Removed fallback
+const mongoUri = process.env.MONGO_URI;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// Check if required environment variables are set
 if (!mongoUri || !ADMIN_PASSWORD || !JWT_SECRET) {
   console.error("Required environment variables (MONGO_URI, ADMIN_PASSWORD, JWT_SECRET) are missing");
   process.exit(1);
@@ -98,14 +98,13 @@ function rateLimitLogin(req, res, next) {
   next();
 }
 
-// Token verification middleware
 function verifyToken(req, res, next) {
-  const token = req.headers["authorization"]?.split(" ")[1]; // Expect "Bearer <token>"
+  const token = req.headers["authorization"]?.split(" ")[1];
   if (!token) return res.status(401).send("Access denied. No token provided.");
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { username, role }
+    req.user = decoded;
     next();
   } catch (err) {
     res.status(403).send("Invalid token.");
@@ -114,14 +113,24 @@ function verifyToken(req, res, next) {
 
 app.get("/ping", (req, res) => res.send("Alive!"));
 
-// Protected routes for static pages
 app.get("/dashboard.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/dashboard.html"));
 app.get("/enter-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/enter-assessment.html"));
 app.get("/view-records.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/view-records.html"));
 app.get("/edit-assessment.html", verifyToken, (req, res) => res.sendFile(__dirname + "/public/edit-assessment.html"));
-app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/public/admin.html")); // Admin login page stays public
+app.get("/admin.html", (req, res) => res.sendFile(__dirname + "/public/admin.html"));
 
-app.post("/submit-scores", verifyToken, async (req, res) => {
+app.post("/submit-scores", verifyToken, [
+  body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
+  body("name").isString().notEmpty().withMessage("Student name is required"),
+  body("scores").isArray({ min: 1 }).withMessage("Scores must be a non-empty array"),
+  body("scores.*.subject").isString().notEmpty().withMessage("Subject is required for each score"),
+  body("scores.*.ca1").isFloat({ min: 0, max: 20 }).withMessage("CA1 must be a number between 0 and 20"),
+  body("scores.*.ca2").isFloat({ min: 0, max: 20 }).withMessage("CA2 must be a number between 0 and 20"),
+  body("scores.*.exam").isFloat({ min: 0, max: 60 }).withMessage("Exam must be a number between 0 and 60")
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { class: className, name, scores } = req.body;
   if (req.user.role === "teacher" && req.user.username !== className) {
     return res.status(403).send("Unauthorized: You can only submit scores for your class.");
@@ -144,7 +153,18 @@ app.post("/submit-scores", verifyToken, async (req, res) => {
   res.send("Scores submitted");
 });
 
-app.post("/update-scores", verifyToken, async (req, res) => {
+app.post("/update-scores", verifyToken, [
+  body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
+  body("serialNumber").isInt({ min: 1 }).withMessage("Serial number must be a positive integer"),
+  body("scores").isArray({ min: 1 }).withMessage("Scores must be a non-empty array"),
+  body("scores.*.subject").isString().notEmpty().withMessage("Subject is required for each score"),
+  body("scores.*.ca1").isFloat({ min: 0, max: 20 }).withMessage("CA1 must be a number between 0 and 20"),
+  body("scores.*.ca2").isFloat({ min: 0, max: 20 }).withMessage("CA2 must be a number between 0 and 20"),
+  body("scores.*.exam").isFloat({ min: 0, max: 60 }).withMessage("Exam must be a number between 0 and 60")
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const { class: className, serialNumber, scores } = req.body;
   if (req.user.role === "teacher" && req.user.username !== className) {
     return res.status(403).send("Unauthorized: You can only update scores for your class.");
@@ -159,7 +179,12 @@ app.post("/update-scores", verifyToken, async (req, res) => {
   res.send("Scores updated");
 });
 
-app.get("/get-scores", verifyToken, async (req, res) => {
+app.get("/get-scores", verifyToken, [
+  query("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name")
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const className = req.query.class;
   if (req.user.role === "teacher" && req.user.username !== className) {
     return res.status(403).send("Unauthorized: You can only view scores for your class.");
@@ -190,7 +215,12 @@ function getGrade(total, isSenior) {
   }
 }
 
-app.get("/get-subjects", verifyToken, async (req, res) => {
+app.get("/get-subjects", verifyToken, [
+  query("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name")
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const className = req.query.class;
   if (req.user.role === "teacher" && req.user.username !== className) {
     return res.status(403).send("Unauthorized: You can only view subjects for your class.");
@@ -199,7 +229,12 @@ app.get("/get-subjects", verifyToken, async (req, res) => {
   res.json(subjects ? subjects.subjects : []);
 });
 
-app.get("/download-scores", verifyToken, async (req, res) => {
+app.get("/download-scores", verifyToken, [
+  query("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name")
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   const className = req.query.class;
   if (req.user.role === "teacher" && req.user.username !== className) {
     return res.status(403).send("Unauthorized: You can only download scores for your class.");
@@ -256,7 +291,14 @@ app.get("/get-classes", verifyToken, async (req, res) => {
   res.json(classes);
 });
 
-app.post("/delete-record", verifyToken, async (req, res) => {
+app.post("/delete-record", verifyToken, [
+  body("class").isIn(Object.keys(classSubjects)).withMessage("Invalid class name"),
+  body("serialNumbers").isArray({ min: 1 }).withMessage("Serial numbers must be a non-empty array"),
+  body("serialNumbers.*").isInt({ min: 1 }).withMessage("Each serial number must be a positive integer")
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   if (req.user.role !== "admin") return res.status(403).send("Unauthorized: Admin only.");
   const { class: className, serialNumbers } = req.body;
   await db.collection("scores").deleteMany({ class: className, serialNumber: { $in: serialNumbers.map(Number) } });
